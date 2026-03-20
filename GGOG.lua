@@ -15,34 +15,32 @@ local Window = Rayfield:CreateWindow({
         Invite = "",
         RememberJoins = false
     },
-
-    -- =====================
-    -- KEY SYSTEM (ВВОД 1 РАЗ)
-    -- =====================
     KeySystem = true,
     KeySettings = {
         Title = "🔒 GGOG HUB | Key System",
         Subtitle = "Введите ключ для доступа",
         Note = "Ключ можно получить у разработчика",
-        FileName = "GGOGHubKeyData",  -- Файл сохранения ключа
-        SaveKey = true,               -- СОХРАНЯЕТ КЛЮЧ (вводишь 1 раз!)
+        FileName = "GGOGHubKeyData",
+        SaveKey = true,
         GrabKeyFromSite = false,
-        Key = {"MagfunLegendUltraGey"}            -- Сам ключ
+        Key = {"MagfunLegendUltraGey"}
     }
 })
 
--- =============================================
--- ДАЛЬШЕ ВЕСЬ ОСТАЛЬНОЙ КОД БЕЗ ИЗМЕНЕНИЙ:
--- =============================================
-
--- Services
+-- =====================
+-- SERVICES
+-- =====================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
+-- =====================
+-- UTILS
+-- =====================
 local function GetChar()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
@@ -59,11 +57,13 @@ local function GetHum()
     return char:FindFirstChildOfClass("Humanoid")
 end
 
+-- =====================
+-- SHARED VARIABLES
+-- =====================
 local Flying = false
 local IsTeleporting = false
 local LastInputTime = tick()
 local PositionHistory = {}
-
 local AntiGrabEnabled = false
 local AntiDetectedEnabled = false
 
@@ -85,6 +85,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
+-- =====================
+-- POSITION HISTORY
+-- =====================
 RunService.Heartbeat:Connect(function()
     if not AntiGrabEnabled and not AntiDetectedEnabled then
         PositionHistory = {}
@@ -151,32 +154,42 @@ local function TeleportBack(seconds)
     return false
 end
 
--- =====================
--- PLAYER TAB
--- =====================
+-- ======================================================
+-- TAB: PLAYER
+-- ======================================================
 local PlayerTab = Window:CreateTab("Player", 4483362458)
 
-PlayerTab:CreateSection("Fly System [FIXED]")
+-- =====================
+-- FLY SYSTEM [NORMAL SPEED]
+-- =====================
+PlayerTab:CreateSection("Fly System")
 
-local FlySpeed = 50
+local FlySpeed = 80
 local FlyConnection = nil
 
 PlayerTab:CreateToggle({
-    Name = "Fly [CFrame Method]",
+    Name = "Fly",
     CurrentValue = false,
     Flag = "FixedFly",
     Callback = function(Value)
         Flying = Value
+
         if Value then
             if FlyConnection then FlyConnection:Disconnect() end
-            FlyConnection = RunService.RenderStepped:Connect(function()
+
+            -- Создаём BodyGyro + BodyVelocity для плавного полёта
+            FlyConnection = RunService.RenderStepped:Connect(function(deltaTime)
                 if not Flying then return end
+
                 local currentChar = LocalPlayer.Character
                 if not currentChar then return end
                 local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
                 if not currentHRP then return end
+                local hum = currentChar:FindFirstChildOfClass("Humanoid")
+
                 local camera = workspace.CurrentCamera
                 local moveDir = Vector3.new(0, 0, 0)
+
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then
                     moveDir = moveDir + camera.CFrame.LookVector
                 end
@@ -195,19 +208,31 @@ PlayerTab:CreateToggle({
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
                     moveDir = moveDir - Vector3.new(0, 1, 0)
                 end
+
+                -- НОРМАЛЬНАЯ СКОРОСТЬ через deltaTime
                 if moveDir.Magnitude > 0 then
-                    moveDir = moveDir.Unit * (FlySpeed / 10)
+                    moveDir = moveDir.Unit * FlySpeed * deltaTime
                     currentHRP.CFrame = currentHRP.CFrame + moveDir
                 end
+
+                -- Убираем гравитацию
                 currentHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                pcall(function()
-                    currentHRP.RotVelocity = Vector3.new(0, 0, 0)
-                end)
+                currentHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+
+                -- Не падаем
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Flying)
+                end
             end)
         else
             if FlyConnection then
                 FlyConnection:Disconnect()
                 FlyConnection = nil
+            end
+            -- Возвращаем нормальное состояние
+            local hum = GetHum()
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
             end
         end
     end,
@@ -215,13 +240,107 @@ PlayerTab:CreateToggle({
 
 PlayerTab:CreateSlider({
     Name = "Fly Speed",
-    Range = {10, 300},
-    Increment = 5,
-    Suffix = " speed",
-    CurrentValue = 50,
+    Range = {10, 500},
+    Increment = 10,
+    Suffix = " studs/s",
+    CurrentValue = 80,
     Flag = "FlySpeed",
     Callback = function(Value)
         FlySpeed = Value
+    end,
+})
+
+-- =====================
+-- LAG SPEED (Auto Clicker)
+-- =====================
+PlayerTab:CreateSection("Lag Speed ⚡")
+
+local LagSpeedEnabled = false
+local LagSpeedValue = 100
+local LagSpeedRunning = false
+local IsMouseDown = false
+
+-- Отслеживаем нажатие мыши
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        IsMouseDown = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        IsMouseDown = false
+    end
+end)
+
+-- Основной цикл Lag Speed
+task.spawn(function()
+    while true do
+        if LagSpeedEnabled and IsMouseDown then
+            -- Рассчитываем задержку между кликами
+            local delay = 1 / LagSpeedValue
+
+            -- Симулируем клик
+            pcall(function()
+                -- Метод 1: VirtualInputManager
+                VirtualInputManager:SendMouseButtonEvent(
+                    Mouse.X, Mouse.Y,
+                    0, true, game, 0
+                )
+                task.wait()
+                VirtualInputManager:SendMouseButtonEvent(
+                    Mouse.X, Mouse.Y,
+                    0, false, game, 0
+                )
+            end)
+
+            -- Также активируем тул если есть
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char then
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool then
+                        tool:Activate()
+                    end
+                end
+            end)
+
+            -- Также пробуем mouse1click (для эксплоитов)
+            pcall(function()
+                mouse1click()
+            end)
+
+            -- Ждём в зависимости от скорости
+            if delay < 0.001 then
+                -- Для очень высоких значений - пакетная обработка
+                task.wait()
+            else
+                task.wait(delay)
+            end
+        else
+            task.wait(0.05) -- Экономим ресурсы когда выключено
+        end
+    end
+end)
+
+PlayerTab:CreateToggle({
+    Name = "Lag Speed ⚡",
+    CurrentValue = false,
+    Flag = "LagSpeed",
+    Callback = function(Value)
+        LagSpeedEnabled = Value
+    end,
+})
+
+PlayerTab:CreateSlider({
+    Name = "Grabs Per Second",
+    Range = {1, 100000},
+    Increment = 1,
+    Suffix = " /sec",
+    CurrentValue = 100,
+    Flag = "LagSpeedValue",
+    Callback = function(Value)
+        LagSpeedValue = Value
     end,
 })
 
@@ -338,7 +457,7 @@ RunService.Heartbeat:Connect(function()
         local success = TeleportBack(7)
         if success then
             Rayfield:Notify({
-                Title = "🛡️ Anti Kick+Hacker [BETA Ulta OP]",
+                Title = "🛡️ Anti Kick+Hacker [BETA Ultra OP]",
                 Content = "⚡ Принудительное перемещение!\nВозврат на 7 секунд назад.",
                 Duration = 3,
                 Image = 4483362458
@@ -376,7 +495,7 @@ PlayerTab:CreateSection("Movement")
 
 PlayerTab:CreateSlider({
     Name = "WalkSpeed",
-    Range = {16, 300},
+    Range = {16, 500},
     Increment = 1,
     Suffix = " studs",
     CurrentValue = 16,
@@ -389,7 +508,7 @@ PlayerTab:CreateSlider({
 
 PlayerTab:CreateSlider({
     Name = "JumpPower",
-    Range = {50, 300},
+    Range = {50, 500},
     Increment = 1,
     Suffix = " power",
     CurrentValue = 50,
@@ -483,9 +602,9 @@ PlayerTab:CreateButton({
     end,
 })
 
--- =====================
--- ESP TAB
--- =====================
+-- ======================================================
+-- TAB: ESP
+-- ======================================================
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 ESPTab:CreateSection("Wallhack")
 
@@ -617,9 +736,9 @@ ESPTab:CreateColorPicker({
     end,
 })
 
--- =====================
--- TELEPORT TAB
--- =====================
+-- ======================================================
+-- TAB: TELEPORT
+-- ======================================================
 local TPTab = Window:CreateTab("Teleport", 4483362458)
 TPTab:CreateSection("Teleport System")
 
@@ -704,9 +823,9 @@ TPTab:CreateButton({
     end,
 })
 
--- =====================
--- SETTINGS TAB
--- =====================
+-- ======================================================
+-- TAB: SETTINGS
+-- ======================================================
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
 SettingsTab:CreateSection("Hub Settings")
 
@@ -716,6 +835,7 @@ SettingsTab:CreateButton({
         Flying = false
         AntiGrabEnabled = false
         AntiDetectedEnabled = false
+        LagSpeedEnabled = false
         if FlyConnection then FlyConnection:Disconnect() end
         Rayfield:Destroy()
     end,
@@ -723,7 +843,7 @@ SettingsTab:CreateButton({
 
 SettingsTab:CreateParagraph({
     Title = "🔥 GGOG HUB",
-    Content = "Modded by: Magfun_legend\nKey: C00lGMAN (вводится 1 раз)\n\nAnti-Grab 🔴OP = Анимации (3 сек)\nAnti Detected = Перемещение (7 сек)"
+    Content = "Modded by: Magfun_legend\n\nFly = WASD + Space/Shift\nLag Speed = Удерживай ЛКМ\nAnti-Grab 🔴OP = Анимации (3 сек)\nAnti Detected = Перемещение (7 сек)"
 })
 
-SettingsTab:CreateLabel("Version 2.1 | Key System Added")
+SettingsTab:CreateLabel("Version 3.0 | Lag Speed + Fixed Fly")
