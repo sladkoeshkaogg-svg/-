@@ -436,7 +436,51 @@ RunService.Heartbeat:Connect(function()
         end)
     end
 end)
+LegendTab:CreateSection("💛 Anti All Hacks v6.9")
 
+local AntiAllHacksEnabled = false
+local AntiAllHacksConnection = nil
+local SAFE_POSITION = CFrame.new(322.31, 9.52, 489.68)
+
+LegendTab:CreateToggle({
+    Name = "Anti All Hacks v6.9 ⚡ULTRA",
+    CurrentValue = false,
+    Flag = "LegendAntiAllHacks",
+    Callback = function(Value)
+        AntiAllHacksEnabled = Value
+        if Value then
+            -- RenderStepped = КАЖДЫЙ КАДР (быстрее невозможно)
+            if AntiAllHacksConnection then AntiAllHacksConnection:Disconnect() end
+            AntiAllHacksConnection = RunService.RenderStepped:Connect(function()
+                if not AntiAllHacksEnabled then return end
+                local char = LocalPlayer.Character
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                hrp.CFrame = SAFE_POSITION
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end)
+            Rayfield:Notify({
+                Title = "⭐ Legend OP",
+                Content = "Anti All Hacks v6.9 АКТИВИРОВАН!\nТП каждый кадр → X:322 Y:9.5 Z:489",
+                Duration = 3,
+                Image = 4483362458
+            })
+        else
+            if AntiAllHacksConnection then
+                AntiAllHacksConnection:Disconnect()
+                AntiAllHacksConnection = nil
+            end
+            Rayfield:Notify({
+                Title = "⭐ Legend OP",
+                Content = "Anti All Hacks v6.9 выключен.",
+                Duration = 2,
+                Image = 4483362458
+            })
+        end
+    end,
+})
 -- ═══════ ОБНОВЛЕНИЕ ПЕРСОНАЖА ═══════
 LocalPlayer.CharacterAdded:Connect(function(char)
     Character       = char
