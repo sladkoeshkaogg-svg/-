@@ -222,10 +222,9 @@ PlayerTab:CreateToggle({
                 Content = "Активировано! Мгновенная реакция.",
                 Duration = 3,
                 Image = 4483362458
-            })
+            
         end
     end,
-})
 
 local function getClosestPlayer(range)
     local closest, dist = nil, range or math.huge
