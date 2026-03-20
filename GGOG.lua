@@ -1,184 +1,350 @@
--- ╔══════════════════════════════════════════════════════════╗
--- ║              DMM HUB — Fling Things and People          ║
--- ║                Built on Rayfield Interface               ║
--- ╚══════════════════════════════════════════════════════════╝
+-- ╔════════════════════════════════════════════════════════════════╗
+-- ║           💀 DMM HUB — Fling Things and People 💀            ║
+-- ║              Built on Rayfield | Full Feature                 ║
+-- ╚════════════════════════════════════════════════════════════════╝
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- ═══════ СЕРВИСЫ ═══════
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local TweenService = game:GetService("TweenService")
+local RS = game:GetService("RunService")
+local Rep = game:GetService("ReplicatedStorage")
+local WS = game:GetService("Workspace")
+local UIS = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local TS = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
+local SG = game:GetService("StarterGui")
 
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local LP = Players.LocalPlayer
+local Char = LP.Character or LP.CharacterAdded:Wait()
+local Hum = Char:WaitForChild("Humanoid")
+local HRP = Char:WaitForChild("HumanoidRootPart")
 
--- ═══════ ПЕРЕМЕННЫЕ ═══════
-local Settings = {
-    -- Kicks
-    InstantKick = false,
-    LoopKick = false,
-    KickAll = false,
-    -- Blobmen
-    BlobmanGrab = false,
-    BlobmanLoopGrab = false,
-    BlobmanFree = false,
-    GrabAll = false,
+-- ═══════ SETTINGS ═══════
+local S = {
+    -- Blobman
+    BlobLoopGrabAll = false,
+    BlobLoopGrabPlayer = false,
+    BlobFree = false,
+    BlobFreeze = false,
+    SpeedGrab = false,
     -- Grabs
-    KillGrab = false,
-    VoidGrab = false,
     PoisonGrab = false,
     RadioactiveGrab = false,
+    DeathGrab = false,
+    BurnGrab = false,
+    VoidGrab = false,
+    MasslessGrab = false,
+    NoclipGrab = false,
+    KillGrab = false,
     FreezeGrab = false,
+    -- Kicks
+    InstantKickBlob = false,
+    AutoKickAllBlob = false,
+    LoopKickBlob = false,
+    -- Kills
+    LoopKill = false,
+    LoopKillAll = false,
+    LoopKillPlayer = false,
     -- Auras
-    FlingAura = false,
-    VoidAura = false,
     PoisonAura = false,
+    DeathAura = false,
+    RadioactiveAura = false,
+    BurnAura = false,
+    FlingAura = false,
+    AttractionAura = false,
+    VoidAura = false,
     FollowAura = false,
-    KillAura = false,
+    KickAura = false,
     -- Combat
-    SuperThrow = false,
     SuperStrength = false,
+    StrengthVal = 500,
     SilentAim = false,
+    AutoAttacker = false,
+    PositionDamage = false,
+    -- Antis
     AntiGrab = false,
     AntiExplosion = false,
     AntiKick = false,
-    PositionDamage = false,
+    AntiVoid = false,
+    AntiBurn = false,
+    AntiLag = false,
+    AntiBlobman = false,
+    GucciAnti = false,
     -- Player
     InfJump = false,
     Noclip = false,
-    SpeedHack = false,
+    Fly = false,
+    FlySpeed = 50,
+    GodMode = false,
     -- Misc
-    AutoClaimCash = false,
-    LoopKillAll = false,
-    LoopKillPlayer = false,
+    LagServer = false,
+    DestroyServer = false,
+    BurnAll = false,
+    BringServer = false,
+    SpamSounds = false,
+    FeObjectTornado = false,
+    FeObjectAura = false,
+    FeObjectFloat = false,
+    LoopRagdoll = false,
+    LoopFire = false,
+    -- Ranges
+    AuraRange = 40,
+    FlingPower = 9999,
 }
 
 local SelectedPlayer = nil
-local WalkSpeedVal = 16
-local JumpPowerVal = 50
-local AuraRange = 30
-local FlingPower = 500
-local ThrowPower = 300
+local SelectedPlayerName = "None"
 
--- ═══════ ОБНОВЛЕНИЕ ПЕРСОНАЖА ═══════
-LocalPlayer.CharacterAdded:Connect(function(char)
-    Character = char
-    Humanoid = char:WaitForChild("Humanoid")
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+-- ═══════ CHARACTER UPDATE ═══════
+LP.CharacterAdded:Connect(function(c)
+    Char = c
+    Hum = c:WaitForChild("Humanoid")
+    HRP = c:WaitForChild("HumanoidRootPart")
 end)
 
 -- ═══════ УТИЛИТЫ ═══════
-local function getPlayerList()
-    local list = {}
+local function plrList()
+    local l = {}
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            table.insert(list, p.Name)
-        end
+        if p ~= LP then table.insert(l, p.Name) end
     end
-    return list
+    return l
 end
 
-local function getClosestPlayer(range)
-    local closest, dist = nil, range or math.huge
+local function getPlr(name)
+    return Players:FindFirstChild(name)
+end
+
+local function alive(p)
+    return p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0
+end
+
+local function dist(p)
+    if alive(p) and HRP then
+        return (HRP.Position - p.Character.HumanoidRootPart.Position).Magnitude
+    end
+    return math.huge
+end
+
+local function closest(range)
+    local best, bestD = nil, range or math.huge
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local d = (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-            if d < dist then
-                closest = p
-                dist = d
+        if p ~= LP then
+            local d = dist(p)
+            if d < bestD then best, bestD = p, d end
+        end
+    end
+    return best
+end
+
+-- ═══════ BLOBMAN UTILS ═══════
+local function getBlobman()
+    -- В FTAP blobman это Model с Seat и руками
+    for _, m in pairs(WS:GetChildren()) do
+        if m:IsA("Model") and (m.Name:lower():find("blob") or m.Name == "BlobMan" or m.Name == "Blobman") then
+            return m
+        end
+    end
+    -- Также ищем в глубину
+    for _, m in pairs(WS:GetDescendants()) do
+        if m:IsA("Model") and (m.Name == "BlobMan" or m.Name == "Blobman") then
+            return m
+        end
+    end
+    return nil
+end
+
+local function getBlobSeat(blob)
+    if blob then
+        return blob:FindFirstChildWhichIsA("Seat") or blob:FindFirstChildWhichIsA("VehicleSeat") or blob:FindFirstChild("Seat")
+    end
+    return nil
+end
+
+local function getBlobHands(blob)
+    local hands = {}
+    if blob then
+        for _, p in pairs(blob:GetDescendants()) do
+            if p:IsA("BasePart") and (p.Name:lower():find("hand") or p.Name:lower():find("grab") or p.Name:lower():find("palm")) then
+                table.insert(hands, p)
+            end
+        end
+        -- Если не нашли по имени, берём все Part кроме Seat
+        if #hands == 0 then
+            for _, p in pairs(blob:GetDescendants()) do
+                if p:IsA("BasePart") and not p:IsA("Seat") and not p:IsA("VehicleSeat") then
+                    table.insert(hands, p)
+                end
             end
         end
     end
-    return closest
+    return hands
 end
 
-local function getBlobman()
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj.Name == "BlobMan" or obj.Name == "Blobman" then
-            return obj
+-- Сесть на блобмен
+local function sitOnBlob(blob)
+    local seat = getBlobSeat(blob)
+    if seat and HRP then
+        HRP.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+        task.wait(0.1)
+        if seat:IsA("Seat") or seat:IsA("VehicleSeat") then
+            seat:Sit(Hum)
         end
     end
-    return nil
 end
 
-local function getAllBlobmen()
-    local blobs = {}
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj.Name == "BlobMan" or obj.Name == "Blobman" then
-            table.insert(blobs, obj)
-        end
-    end
-    return blobs
-end
-
-local function getGrabbableRemote()
-    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("grab") or v.Name:lower():find("pickup") or v.Name:lower():find("interact")) then
-            return v
-        end
-    end
-    return nil
-end
-
-local function getKickRemote()
-    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("kick") or v.Name:lower():find("fling") or v.Name:lower():find("throw") or v.Name:lower():find("hit")) then
-            return v
-        end
-    end
-    return nil
-end
-
-local function getDamageRemote()
-    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("damage") or v.Name:lower():find("attack") or v.Name:lower():find("kill")) then
-            return v
-        end
-    end
-    return nil
-end
-
-local function getCashRemote()
-    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("cash") or v.Name:lower():find("coin") or v.Name:lower():find("claim") or v.Name:lower():find("money")) then
-            return v
-        end
-    end
-    return nil
-end
-
-local function applyVelocity(part, direction, power)
-    if part then
-        local bv = Instance.new("BodyVelocity")
-        bv.Velocity = direction * power
-        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bv.Parent = part
-        game:GetService("Debris"):AddItem(bv, 0.3)
-    end
-end
-
-local function flingPlayer(target)
+-- Grab player через blob
+local function blobGrabPlayer(blob, target)
     pcall(function()
-        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            local tHRP = target.Character.HumanoidRootPart
-            local direction = (tHRP.Position - HumanoidRootPart.Position).Unit
-            HumanoidRootPart.CFrame = tHRP.CFrame + direction * 2
-            applyVelocity(tHRP, Vector3.new(math.random(-1,1), 1, math.random(-1,1)), FlingPower)
+        if not alive(target) or not blob then return end
+        local hands = getBlobHands(blob)
+        for _, hand in pairs(hands) do
+            if hand then
+                -- Телепортируем руку блобмена к цели
+                hand.CFrame = target.Character.HumanoidRootPart.CFrame
+                -- firetouchinterest
+                pcall(function()
+                    firetouchinterest(hand, target.Character.HumanoidRootPart, 0)
+                    task.wait(0.05)
+                    firetouchinterest(hand, target.Character.HumanoidRootPart, 1)
+                end)
+            end
         end
     end)
 end
 
+-- Kick через blob: хватаем и бросаем вниз/вверх
+local function blobKickPlayer(blob, target)
+    pcall(function()
+        if not alive(target) or not blob then return end
+        local hands = getBlobHands(blob)
+        for _, hand in pairs(hands) do
+            hand.CFrame = target.Character.HumanoidRootPart.CFrame
+            pcall(function()
+                firetouchinterest(hand, target.Character.HumanoidRootPart, 0)
+            end)
+        end
+        task.wait(0.1)
+        -- Fling: даём velocity
+        if alive(target) then
+            local hrp = target.Character.HumanoidRootPart
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+            bv.Velocity = Vector3.new(0, S.FlingPower, 0)
+            bv.Parent = hrp
+            Debris:AddItem(bv, 0.5)
+        end
+        task.wait(0.15)
+        for _, hand in pairs(hands) do
+            pcall(function()
+                firetouchinterest(hand, target.Character.HumanoidRootPart, 1)
+            end)
+        end
+    end)
+end
+
+-- Void player
 local function voidPlayer(target)
     pcall(function()
-        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-            target.Character.HumanoidRootPart.CFrame = CFrame.new(0, -500, 0)
+        if alive(target) then
+            target.Character.HumanoidRootPart.CFrame = CFrame.new(9e9, 9e9, 9e9)
+        end
+    end)
+end
+
+-- Fling player (fling своим телом)
+local function flingPlayer(target)
+    pcall(function()
+        if not alive(target) then return end
+        local tHRP = target.Character.HumanoidRootPart
+        -- Способ через velocity spin
+        local oldCF = HRP.CFrame
+        HRP.CFrame = tHRP.CFrame * CFrame.new(0, 0, -1)
+        local bav = Instance.new("BodyAngularVelocity")
+        bav.AngularVelocity = Vector3.new(0, S.FlingPower, 0)
+        bav.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+        bav.Parent = HRP
+        Debris:AddItem(bav, 0.3)
+        task.wait(0.3)
+        HRP.CFrame = oldCF
+    end)
+end
+
+-- ═══════ GRAB EFFECT UTILS ═══════
+local function applyGrabEffect(target, effectType)
+    pcall(function()
+        if not alive(target) then return end
+        local hrp = target.Character.HumanoidRootPart
+        
+        if effectType == "Poison" then
+            local p = Instance.new("Part")
+            p.Shape = Enum.PartType.Ball
+            p.Size = Vector3.new(3,3,3)
+            p.Color = Color3.fromRGB(0, 255, 0)
+            p.Material = Enum.Material.Neon
+            p.Transparency = 0.4
+            p.Anchored = true
+            p.CanCollide = false
+            p.CFrame = hrp.CFrame
+            p.Parent = WS
+            Debris:AddItem(p, 0.5)
+            -- Damage via network
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+            bv.Velocity = Vector3.new(0, -50, 0)
+            bv.Parent = hrp
+            Debris:AddItem(bv, 0.2)
+
+        elseif effectType == "Radioactive" then
+            local p = Instance.new("Part")
+            p.Shape = Enum.PartType.Ball
+            p.Size = Vector3.new(4,4,4)
+            p.Color = Color3.fromRGB(255, 255, 0)
+            p.Material = Enum.Material.Neon
+            p.Transparency = 0.3
+            p.Anchored = true
+            p.CanCollide = false
+            p.CFrame = hrp.CFrame
+            p.Parent = WS
+            Debris:AddItem(p, 0.5)
+
+        elseif effectType == "Death" then
+            hrp.CFrame = CFrame.new(0, -500, 0)
+
+        elseif effectType == "Burn" then
+            local fire = Instance.new("Fire")
+            fire.Size = 10
+            fire.Heat = 25
+            fire.Parent = hrp
+            Debris:AddItem(fire, 3)
+
+        elseif effectType == "Void" then
+            hrp.CFrame = CFrame.new(9e9, 9e9, 9e9)
+
+        elseif effectType == "Massless" then
+            for _, part in pairs(target.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.Massless = true
+                end
+            end
+
+        elseif effectType == "Noclip" then
+            for _, part in pairs(target.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+
+        elseif effectType == "Kill" then
+            hrp.CFrame = CFrame.new(0, -500, 0)
+
+        elseif effectType == "Freeze" then
+            hrp.Anchored = true
+            task.delay(5, function()
+                pcall(function() hrp.Anchored = false end)
+            end)
         end
     end)
 end
@@ -187,86 +353,114 @@ end
 -- ОКНО
 -- ═══════════════════════════════════════
 local Window = Rayfield:CreateWindow({
-    Name = "💀 DMM HUB — FTAP",
+    Name = "💀 DMM HUB | FTAP",
     Icon = 0,
     LoadingTitle = "DMM HUB",
-    LoadingSubtitle = "Fling Things and People",
+    LoadingSubtitle = "by DMM | Fling Things and People",
     Theme = "Default",
     DisableRayfieldPrompts = true,
     DisableBuildWarnings = true,
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "DMM_HUB",
-        FileName = "FTAP_Config"
+        FileName = "FTAP"
     },
     KeySystem = false,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: 🦠 BLOBMEN
--- ═══════════════════════════════════════════════════
+-- ╔══════════════════════════╗
+-- ║   TAB: 🦠 BLOBMEN       ║
+-- ╚══════════════════════════╝
 local BlobTab = Window:CreateTab("🦠 Blobmen", 0)
 
-local BlobSection = BlobTab:CreateSection("Blobman Controls")
+BlobTab:CreateSection("Blobman Main")
 
--- Blobman Grab
-BlobTab:CreateToggle({
-    Name = "Blobman Grab",
-    CurrentValue = false,
-    Flag = "BlobGrab",
-    Callback = function(Value)
-        Settings.BlobmanGrab = Value
-        if Value then
-            task.spawn(function()
-                while Settings.BlobmanGrab do
-                    task.wait(0.1)
-                    pcall(function()
-                        local blob = getBlobman()
-                        if blob then
-                            local remote = getGrabbableRemote()
-                            if remote then
-                                remote:FireServer(blob)
-                            end
-                            -- Альтернатива через firetouchinterest
-                            if blob:FindFirstChild("Handle") or blob:IsA("BasePart") then
-                                local part = blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
-                                if part and HumanoidRootPart then
-                                    firetouchinterest(HumanoidRootPart, part, 0)
-                                    task.wait(0.05)
-                                    firetouchinterest(HumanoidRootPart, part, 1)
-                                end
-                            end
-                        end
-                    end)
-                end
-            end)
+BlobTab:CreateButton({
+    Name = "🟢 Sit On Blobman",
+    Callback = function()
+        local blob = getBlobman()
+        if blob then
+            sitOnBlob(blob)
+            Rayfield:Notify({Title="DMM",Content="Mounted Blobman!",Duration=2})
+        else
+            Rayfield:Notify({Title="DMM",Content="No Blobman found!",Duration=2})
         end
     end,
 })
 
--- Blobman Loop Grab All Players
+BlobTab:CreateButton({
+    Name = "🆓 Blobman Free (Spawn)",
+    Callback = function()
+        pcall(function()
+            for _, r in pairs(Rep:GetDescendants()) do
+                if r:IsA("RemoteEvent") then
+                    pcall(function() r:FireServer("BlobMan") end)
+                    pcall(function() r:FireServer("Blobman") end)
+                    pcall(function() r:FireServer("Buy", "BlobMan") end)
+                    pcall(function() r:FireServer("buy", "Blobman") end)
+                    pcall(function() r:FireServer("Purchase", "BlobMan") end)
+                end
+            end
+            -- Пробуем через Shop remote
+            for _, r in pairs(Rep:GetDescendants()) do
+                if r:IsA("RemoteFunction") then
+                    pcall(function() r:InvokeServer("BlobMan") end)
+                    pcall(function() r:InvokeServer("Buy", "Blobman") end)
+                end
+            end
+        end)
+        Rayfield:Notify({Title="DMM",Content="Attempted spawn Blobman!",Duration=2})
+    end,
+})
+
 BlobTab:CreateToggle({
-    Name = "Blobman Loop Grab All",
+    Name = "❄️ Freeze Blobman",
     CurrentValue = false,
-    Flag = "BlobLoopGrabAll",
-    Callback = function(Value)
-        Settings.BlobmanLoopGrab = Value
+    Flag = "BlobFreeze",
+    Callback = function(V)
+        S.BlobFreeze = V
         task.spawn(function()
-            while Settings.BlobmanLoopGrab do
+            while S.BlobFreeze do
+                task.wait(0.1)
+                pcall(function()
+                    local blob = getBlobman()
+                    if blob then
+                        for _, p in pairs(blob:GetDescendants()) do
+                            if p:IsA("BasePart") then p.Anchored = true end
+                        end
+                    end
+                end)
+            end
+            -- Unfreeze
+            pcall(function()
+                local blob = getBlobman()
+                if blob then
+                    for _, p in pairs(blob:GetDescendants()) do
+                        if p:IsA("BasePart") then p.Anchored = false end
+                    end
+                end
+            end)
+        end)
+    end,
+})
+
+BlobTab:CreateSection("Blobman Loop Grab")
+
+BlobTab:CreateToggle({
+    Name = "🔄 Loop Grab ALL Players",
+    CurrentValue = false,
+    Flag = "BlobGrabAll",
+    Callback = function(V)
+        S.BlobLoopGrabAll = V
+        task.spawn(function()
+            while S.BlobLoopGrabAll do
                 task.wait(0.15)
                 pcall(function()
                     local blob = getBlobman()
                     if blob then
-                        local blobPart = blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
-                        if blobPart then
-                            for _, p in pairs(Players:GetPlayers()) do
-                                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                    blobPart.CFrame = p.Character.HumanoidRootPart.CFrame
-                                    task.wait(0.05)
-                                    firetouchinterest(blobPart, p.Character.HumanoidRootPart, 0)
-                                    task.wait(0.05)
-                                    firetouchinterest(blobPart, p.Character.HumanoidRootPart, 1)
-                                end
+                        for _, p in pairs(Players:GetPlayers()) do
+                            if p ~= LP and alive(p) then
+                                blobGrabPlayer(blob, p)
                             end
                         end
                     end
@@ -276,290 +470,165 @@ BlobTab:CreateToggle({
     end,
 })
 
--- Blobman Free (Spawn Free Blobman)
-BlobTab:CreateButton({
-    Name = "Blobman Free (Spawn)",
-    Callback = function()
-        pcall(function()
-            for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                if remote:IsA("RemoteEvent") and (remote.Name:lower():find("spawn") or remote.Name:lower():find("buy") or remote.Name:lower():find("summon")) then
-                    remote:FireServer("BlobMan")
-                    remote:FireServer("Blobman")
-                end
-            end
-        end)
-        Rayfield:Notify({Title = "DMM HUB", Content = "Attempted to spawn Blobman!", Duration = 3})
-    end,
-})
-
--- Blobman TP to Player
-local blobTpDropdown
 BlobTab:CreateDropdown({
-    Name = "Blobman TP to Player",
-    Options = getPlayerList(),
+    Name = "Select Player (Blob Grab)",
+    Options = plrList(),
     CurrentOption = {},
     MultiOption = false,
-    Flag = "BlobTP",
-    Callback = function(Option)
-        pcall(function()
-            local target = Players:FindFirstChild(Option)
-            local blob = getBlobman()
-            if target and target.Character and blob then
-                local blobPart = blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
-                if blobPart and target.Character:FindFirstChild("HumanoidRootPart") then
-                    blobPart.CFrame = target.Character.HumanoidRootPart.CFrame
-                end
+    Flag = "BlobGrabTarget",
+    Callback = function(Opt)
+        SelectedPlayerName = Opt
+        SelectedPlayer = getPlr(Opt)
+    end,
+})
+
+BlobTab:CreateToggle({
+    Name = "🔄 Loop Grab Selected Player",
+    CurrentValue = false,
+    Flag = "BlobGrabSel",
+    Callback = function(V)
+        S.BlobLoopGrabPlayer = V
+        task.spawn(function()
+            while S.BlobLoopGrabPlayer do
+                task.wait(0.15)
+                pcall(function()
+                    local blob = getBlobman()
+                    if blob and alive(SelectedPlayer) then
+                        blobGrabPlayer(blob, SelectedPlayer)
+                    end
+                end)
             end
         end)
     end,
 })
 
--- Blobman Multiple Grab
+BlobTab:CreateToggle({
+    Name = "⚡ Speed Grab Player",
+    CurrentValue = false,
+    Flag = "SpeedGrab",
+    Callback = function(V)
+        S.SpeedGrab = V
+        task.spawn(function()
+            while S.SpeedGrab do
+                task.wait(0.05)
+                pcall(function()
+                    local blob = getBlobman()
+                    if blob and alive(SelectedPlayer) then
+                        blobGrabPlayer(blob, SelectedPlayer)
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
 BlobTab:CreateButton({
-    Name = "Multiple Blobman Grab",
+    Name = "🤏 Multiple Grab (Grab All Blobmen)",
     Callback = function()
         pcall(function()
-            local blobs = getAllBlobmen()
-            for _, blob in pairs(blobs) do
-                local part = blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    firetouchinterest(HumanoidRootPart, part, 0)
-                    task.wait(0.05)
-                    firetouchinterest(HumanoidRootPart, part, 1)
+            for _, m in pairs(WS:GetDescendants()) do
+                if m:IsA("Model") and (m.Name == "BlobMan" or m.Name == "Blobman") then
+                    local hands = getBlobHands(m)
+                    for _, h in pairs(hands) do
+                        firetouchinterest(HRP, h, 0)
+                        task.wait(0.02)
+                        firetouchinterest(HRP, h, 1)
+                    end
                 end
             end
         end)
-        Rayfield:Notify({Title = "DMM HUB", Content = "Grabbed all Blobmen!", Duration = 3})
+        Rayfield:Notify({Title="DMM",Content="Grabbed all Blobmen!",Duration=2})
     end,
 })
 
-local BlobGrabSection = BlobTab:CreateSection("Grab Mods (With Blobman)")
+BlobTab:CreateSection("Grab Mods")
 
--- Kill Grab
-BlobTab:CreateToggle({
-    Name = "Kill Grab",
-    CurrentValue = false,
-    Flag = "KillGrab",
-    Callback = function(Value)
-        Settings.KillGrab = Value
-        task.spawn(function()
-            while Settings.KillGrab do
-                task.wait(0.1)
-                pcall(function()
-                    local target = getClosestPlayer(AuraRange)
-                    if target and target.Character then
-                        local hrp = target.Character:FindFirstChild("HumanoidRootPart")
-                        local hum = target.Character:FindFirstChild("Humanoid")
-                        if hrp then
-                            HumanoidRootPart.CFrame = hrp.CFrame * CFrame.new(0, 0, -2)
-                            applyVelocity(hrp, Vector3.new(0, -1000, 0), 9999)
+local grabTypes = {"Poison", "Radioactive", "Death", "Burn", "Void", "Massless", "Noclip", "Kill", "Freeze"}
+
+for _, gt in pairs(grabTypes) do
+    BlobTab:CreateToggle({
+        Name = "💎 " .. gt .. " Grab",
+        CurrentValue = false,
+        Flag = gt .. "Grab",
+        Callback = function(V)
+            S[gt .. "Grab"] = V
+            task.spawn(function()
+                while S[gt .. "Grab"] do
+                    task.wait(0.3)
+                    pcall(function()
+                        local target = closest(S.AuraRange)
+                        if target then
+                            applyGrabEffect(target, gt)
                         end
-                    end
-                end)
-            end
-        end)
-    end,
-})
+                    end)
+                end
+            end)
+        end,
+    })
+end
 
--- Void Grab
-BlobTab:CreateToggle({
-    Name = "Void Grab",
-    CurrentValue = false,
-    Flag = "VoidGrab",
-    Callback = function(Value)
-        Settings.VoidGrab = Value
-        task.spawn(function()
-            while Settings.VoidGrab do
-                task.wait(0.2)
-                pcall(function()
-                    local target = getClosestPlayer(AuraRange)
-                    if target then
-                        voidPlayer(target)
-                    end
-                end)
-            end
-        end)
-    end,
-})
-
--- Poison Grab
-BlobTab:CreateToggle({
-    Name = "Poison Grab",
-    CurrentValue = false,
-    Flag = "PoisonGrab",
-    Callback = function(Value)
-        Settings.PoisonGrab = Value
-        task.spawn(function()
-            while Settings.PoisonGrab do
-                task.wait(0.3)
-                pcall(function()
-                    local target = getClosestPlayer(AuraRange)
-                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                        local damageRemote = getDamageRemote()
-                        if damageRemote then
-                            damageRemote:FireServer(target.Character.HumanoidRootPart, "Poison")
-                        end
-                        -- visual effect
-                        local part = Instance.new("Part")
-                        part.Size = Vector3.new(1, 1, 1)
-                        part.Color = Color3.fromRGB(0, 255, 0)
-                        part.Material = Enum.Material.Neon
-                        part.Anchored = true
-                        part.CanCollide = false
-                        part.Transparency = 0.5
-                        part.CFrame = target.Character.HumanoidRootPart.CFrame
-                        part.Shape = Enum.PartType.Ball
-                        part.Parent = Workspace
-                        game:GetService("Debris"):AddItem(part, 0.5)
-                    end
-                end)
-            end
-        end)
-    end,
-})
-
--- Radioactive Grab
-BlobTab:CreateToggle({
-    Name = "Radioactive Grab",
-    CurrentValue = false,
-    Flag = "RadioGrab",
-    Callback = function(Value)
-        Settings.RadioactiveGrab = Value
-        task.spawn(function()
-            while Settings.RadioactiveGrab do
-                task.wait(0.2)
-                pcall(function()
-                    local target = getClosestPlayer(AuraRange)
-                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                        local damageRemote = getDamageRemote()
-                        if damageRemote then
-                            damageRemote:FireServer(target.Character.HumanoidRootPart, "Radioactive")
-                        end
-                        local part = Instance.new("Part")
-                        part.Size = Vector3.new(2, 2, 2)
-                        part.Color = Color3.fromRGB(255, 255, 0)
-                        part.Material = Enum.Material.Neon
-                        part.Anchored = true
-                        part.CanCollide = false
-                        part.Transparency = 0.4
-                        part.CFrame = target.Character.HumanoidRootPart.CFrame
-                        part.Shape = Enum.PartType.Ball
-                        part.Parent = Workspace
-                        game:GetService("Debris"):AddItem(part, 0.5)
-                    end
-                end)
-            end
-        end)
-    end,
-})
-
--- Freeze Grab
-BlobTab:CreateToggle({
-    Name = "Freeze Grab",
-    CurrentValue = false,
-    Flag = "FreezeGrab",
-    Callback = function(Value)
-        Settings.FreezeGrab = Value
-        task.spawn(function()
-            while Settings.FreezeGrab do
-                task.wait(0.3)
-                pcall(function()
-                    local target = getClosestPlayer(AuraRange)
-                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                        target.Character.HumanoidRootPart.Anchored = true
-                        task.delay(3, function()
-                            pcall(function()
-                                target.Character.HumanoidRootPart.Anchored = false
-                            end)
-                        end)
-                    end
-                end)
-            end
-        end)
-    end,
-})
-
--- Grab Range
 BlobTab:CreateSlider({
     Name = "Grab / Aura Range",
-    Range = {10, 200},
+    Range = {10, 300},
     Increment = 5,
     Suffix = "studs",
-    CurrentValue = 30,
+    CurrentValue = 40,
     Flag = "AuraRange",
-    Callback = function(Value)
-        AuraRange = Value
-    end,
+    Callback = function(V) S.AuraRange = V end,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: ⚡ KICKS
--- ═══════════════════════════════════════════════════
+-- ╔══════════════════════════╗
+-- ║   TAB: ⚡ KICKS          ║
+-- ╚══════════════════════════╝
 local KickTab = Window:CreateTab("⚡ Kicks", 0)
 
-local KickSection = KickTab:CreateSection("Kick Players")
+KickTab:CreateSection("Select Target")
 
--- Select Player for Kick
 KickTab:CreateDropdown({
     Name = "Select Player",
-    Options = getPlayerList(),
+    Options = plrList(),
     CurrentOption = {},
     MultiOption = false,
     Flag = "KickTarget",
-    Callback = function(Option)
-        SelectedPlayer = Players:FindFirstChild(Option)
+    Callback = function(Opt)
+        SelectedPlayer = getPlr(Opt)
+        SelectedPlayerName = Opt
     end,
 })
 
--- Instant Kick (Blobman Kick)
+KickTab:CreateSection("Instant Kick")
+
 KickTab:CreateButton({
     Name = "⚡ Instant Kick (Blobman)",
     Callback = function()
         pcall(function()
-            if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local blob = getBlobman()
-                if blob then
-                    local blobPart = blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
-                    if blobPart then
-                        -- TP blobman to target and fling them off the map
-                        for i = 1, 20 do
-                            blobPart.CFrame = SelectedPlayer.Character.HumanoidRootPart.CFrame
-                            applyVelocity(SelectedPlayer.Character.HumanoidRootPart, Vector3.new(0, 5000, 0), 9999)
-                            task.wait(0.05)
-                        end
-                    end
-                else
-                    -- Fling kick без blobman
-                    for i = 1, 30 do
-                        HumanoidRootPart.CFrame = SelectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -1)
-                        Humanoid.WalkSpeed = 500
-                        applyVelocity(SelectedPlayer.Character.HumanoidRootPart, (SelectedPlayer.Character.HumanoidRootPart.Position - HumanoidRootPart.Position).Unit * 3000 + Vector3.new(0, 2000, 0), 1)
-                        task.wait(0.05)
-                    end
-                    Humanoid.WalkSpeed = WalkSpeedVal
+            local blob = getBlobman()
+            if blob and alive(SelectedPlayer) then
+                for i = 1, 30 do
+                    blobKickPlayer(blob, SelectedPlayer)
+                    task.wait(0.05)
                 end
-                Rayfield:Notify({Title = "DMM HUB", Content = "Kicked " .. SelectedPlayer.Name .. "!", Duration = 3})
+                Rayfield:Notify({Title="DMM",Content="Kicked "..SelectedPlayerName.."!",Duration=2})
             else
-                Rayfield:Notify({Title = "DMM HUB", Content = "Select a player first!", Duration = 3})
+                Rayfield:Notify({Title="DMM",Content="Need Blobman + Target!",Duration=2})
             end
         end)
     end,
 })
 
--- Loop Kick
 KickTab:CreateToggle({
-    Name = "🔄 Loop Kick Selected",
+    Name = "🔄 Loop Kick (Blobman)",
     CurrentValue = false,
-    Flag = "LoopKick",
-    Callback = function(Value)
-        Settings.LoopKick = Value
+    Flag = "LoopKickBlob",
+    Callback = function(V)
+        S.LoopKickBlob = V
         task.spawn(function()
-            while Settings.LoopKick do
-                task.wait(0.5)
+            while S.LoopKickBlob do
+                task.wait(0.2)
                 pcall(function()
-                    if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        flingPlayer(SelectedPlayer)
-                        applyVelocity(SelectedPlayer.Character.HumanoidRootPart, Vector3.new(math.random(-1,1), 5, math.random(-1,1)), 3000)
+                    local blob = getBlobman()
+                    if blob and alive(SelectedPlayer) then
+                        blobKickPlayer(blob, SelectedPlayer)
                     end
                 end)
             end
@@ -567,37 +636,63 @@ KickTab:CreateToggle({
     end,
 })
 
--- Kick ALL
 KickTab:CreateButton({
-    Name = "💥 Kick ALL Players",
+    Name = "💥 Kick ALL (Blobman)",
     Callback = function()
         task.spawn(function()
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    pcall(function()
-                        flingPlayer(p)
-                        applyVelocity(p.Character.HumanoidRootPart, Vector3.new(math.random(-1,1), 5, math.random(-1,1)), 3000)
-                    end)
-                    task.wait(0.2)
+            local blob = getBlobman()
+            if blob then
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= LP and alive(p) then
+                        for i = 1, 15 do
+                            blobKickPlayer(blob, p)
+                            task.wait(0.05)
+                        end
+                    end
                 end
+                Rayfield:Notify({Title="DMM",Content="Kicked ALL!",Duration=2})
             end
         end)
-        Rayfield:Notify({Title = "DMM HUB", Content = "Kicked all players!", Duration = 3})
     end,
 })
 
--- Loop Kill
 KickTab:CreateToggle({
-    Name = "🔄 Loop Kill Selected",
+    Name = "🔄 Auto Kick ALL Off Blob",
     CurrentValue = false,
-    Flag = "LoopKillPlayer",
-    Callback = function(Value)
-        Settings.LoopKillPlayer = Value
+    Flag = "AutoKickAll",
+    Callback = function(V)
+        S.AutoKickAllBlob = V
         task.spawn(function()
-            while Settings.LoopKillPlayer do
+            while S.AutoKickAllBlob do
                 task.wait(0.3)
                 pcall(function()
-                    if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local blob = getBlobman()
+                    if blob then
+                        for _, p in pairs(Players:GetPlayers()) do
+                            if p ~= LP and alive(p) then
+                                blobKickPlayer(blob, p)
+                            end
+                        end
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+KickTab:CreateSection("Kill Methods")
+
+KickTab:CreateToggle({
+    Name = "💀 Loop Kill Selected",
+    CurrentValue = false,
+    Flag = "LoopKill",
+    Callback = function(V)
+        S.LoopKill = V
+        task.spawn(function()
+            while S.LoopKill do
+                task.wait(0.3)
+                pcall(function()
+                    if alive(SelectedPlayer) then
                         SelectedPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(0, -500, 0)
                     end
                 end)
@@ -606,19 +701,18 @@ KickTab:CreateToggle({
     end,
 })
 
--- Loop Kill All
 KickTab:CreateToggle({
-    Name = "💀 Loop Kill ALL",
+    Name = "☠️ Loop Kill ALL",
     CurrentValue = false,
     Flag = "LoopKillAll",
-    Callback = function(Value)
-        Settings.LoopKillAll = Value
+    Callback = function(V)
+        S.LoopKillAll = V
         task.spawn(function()
-            while Settings.LoopKillAll do
+            while S.LoopKillAll do
                 task.wait(0.3)
                 for _, p in pairs(Players:GetPlayers()) do
                     pcall(function()
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        if p ~= LP and alive(p) then
                             p.Character.HumanoidRootPart.CFrame = CFrame.new(0, -500, 0)
                         end
                     end)
@@ -628,87 +722,167 @@ KickTab:CreateToggle({
     end,
 })
 
-local KickPowerSection = KickTab:CreateSection("Kick Settings")
-
-KickTab:CreateSlider({
-    Name = "Fling Power",
-    Range = {100, 10000},
-    Increment = 100,
-    Suffix = "force",
-    CurrentValue = 500,
-    Flag = "FlingPower",
-    Callback = function(Value)
-        FlingPower = Value
+KickTab:CreateToggle({
+    Name = "🔄 Loop Ragdoll Selected",
+    CurrentValue = false,
+    Flag = "LoopRagdoll",
+    Callback = function(V)
+        S.LoopRagdoll = V
+        task.spawn(function()
+            while S.LoopRagdoll do
+                task.wait(0.5)
+                pcall(function()
+                    if alive(SelectedPlayer) then
+                        local hrp = SelectedPlayer.Character.HumanoidRootPart
+                        local bv = Instance.new("BodyVelocity")
+                        bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                        bv.Velocity = Vector3.new(math.random(-200,200), 100, math.random(-200,200))
+                        bv.Parent = hrp
+                        Debris:AddItem(bv, 0.3)
+                    end
+                end)
+            end
+        end)
     end,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: ⚔️ COMBAT
--- ═══════════════════════════════════════════════════
+KickTab:CreateToggle({
+    Name = "🔥 Loop Fire Selected",
+    CurrentValue = false,
+    Flag = "LoopFire",
+    Callback = function(V)
+        S.LoopFire = V
+        task.spawn(function()
+            while S.LoopFire do
+                task.wait(1)
+                pcall(function()
+                    if alive(SelectedPlayer) then
+                        applyGrabEffect(SelectedPlayer, "Burn")
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+KickTab:CreateButton({
+    Name = "🌊 Send to Void (Selected)",
+    Callback = function()
+        if alive(SelectedPlayer) then
+            voidPlayer(SelectedPlayer)
+            Rayfield:Notify({Title="DMM",Content="Voided "..SelectedPlayerName,Duration=2})
+        end
+    end,
+})
+
+KickTab:CreateToggle({
+    Name = "🌊 Loop Send to Void",
+    CurrentValue = false,
+    Flag = "LoopVoid",
+    Callback = function(V)
+        local loopVoid = V
+        task.spawn(function()
+            while loopVoid do
+                task.wait(0.5)
+                pcall(function()
+                    if alive(SelectedPlayer) then voidPlayer(SelectedPlayer) end
+                end)
+            end
+        end)
+    end,
+})
+
+KickTab:CreateButton({
+    Name = "🔗 Bring Selected Player",
+    Callback = function()
+        pcall(function()
+            if alive(SelectedPlayer) then
+                SelectedPlayer.Character.HumanoidRootPart.CFrame = HRP.CFrame * CFrame.new(0, 0, -5)
+                Rayfield:Notify({Title="DMM",Content="Brought "..SelectedPlayerName,Duration=2})
+            end
+        end)
+    end,
+})
+
+KickTab:CreateButton({
+    Name = "🔒 Lock Selected Player",
+    Callback = function()
+        pcall(function()
+            if alive(SelectedPlayer) then
+                SelectedPlayer.Character.HumanoidRootPart.Anchored = true
+                Rayfield:Notify({Title="DMM",Content="Locked "..SelectedPlayerName,Duration=2})
+            end
+        end)
+    end,
+})
+
+KickTab:CreateSlider({
+    Name = "Fling / Kick Power",
+    Range = {100, 99999},
+    Increment = 500,
+    Suffix = "force",
+    CurrentValue = 9999,
+    Flag = "FlingPow",
+    Callback = function(V) S.FlingPower = V end,
+})
+
+-- ╔══════════════════════════╗
+-- ║   TAB: ⚔️ COMBAT        ║
+-- ╚══════════════════════════╝
 local CombatTab = Window:CreateTab("⚔️ Combat", 0)
 
-local CombatSection = CombatTab:CreateSection("Offensive")
+CombatTab:CreateSection("Strength & Aim")
 
--- Super Throw
 CombatTab:CreateToggle({
-    Name = "Super Throw",
+    Name = "💪 Super Strength",
     CurrentValue = false,
-    Flag = "SuperThrow",
-    Callback = function(Value)
-        Settings.SuperThrow = Value
+    Flag = "SuperStr",
+    Callback = function(V)
+        S.SuperStrength = V
     end,
 })
 
 CombatTab:CreateSlider({
-    Name = "Throw Power",
-    Range = {100, 5000},
+    Name = "Custom Strength",
+    Range = {0, 10000},
     Increment = 50,
-    Suffix = "force",
-    CurrentValue = 300,
-    Flag = "ThrowPower",
-    Callback = function(Value)
-        ThrowPower = Value
-    end,
+    Suffix = "str",
+    CurrentValue = 500,
+    Flag = "StrVal",
+    Callback = function(V) S.StrengthVal = V end,
 })
 
--- Super Strength
-CombatTab:CreateToggle({
-    Name = "Super Strength",
-    CurrentValue = false,
-    Flag = "SuperStrength",
-    Callback = function(Value)
-        Settings.SuperStrength = Value
-        -- Модифицируем все BodyMovers при подбирании
-    end,
-})
+-- Super Strength через DescendantAdded
+WS.DescendantAdded:Connect(function(obj)
+    if S.SuperStrength then
+        if obj:IsA("BodyPosition") then
+            obj.MaxForce = Vector3.new(S.StrengthVal * 1000, S.StrengthVal * 1000, S.StrengthVal * 1000)
+        elseif obj:IsA("BodyVelocity") then
+            obj.MaxForce = Vector3.new(S.StrengthVal * 1000, S.StrengthVal * 1000, S.StrengthVal * 1000)
+        end
+    end
+end)
 
--- Silent Aim
 CombatTab:CreateToggle({
-    Name = "Silent Aim",
+    Name = "🎯 Silent Aim",
     CurrentValue = false,
     Flag = "SilentAim",
-    Callback = function(Value)
-        Settings.SilentAim = Value
-    end,
+    Callback = function(V) S.SilentAim = V end,
 })
 
--- Position Damage
 CombatTab:CreateToggle({
-    Name = "Position Damage",
+    Name = "⚔️ Auto Attacker",
     CurrentValue = false,
-    Flag = "PosDamage",
-    Callback = function(Value)
-        Settings.PositionDamage = Value
+    Flag = "AutoAtk",
+    Callback = function(V)
+        S.AutoAttacker = V
         task.spawn(function()
-            while Settings.PositionDamage do
+            while S.AutoAttacker do
                 task.wait(0.2)
                 pcall(function()
-                    local target = getClosestPlayer(AuraRange)
-                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                        local remote = getDamageRemote()
-                        if remote then
-                            remote:FireServer(target, target.Character.HumanoidRootPart.Position)
-                        end
+                    local target = closest(S.AuraRange)
+                    if target and alive(target) then
+                        flingPlayer(target)
                     end
                 end)
             end
@@ -716,99 +890,112 @@ CombatTab:CreateToggle({
     end,
 })
 
-local AuraSection = CombatTab:CreateSection("Auras")
-
--- Fling Aura
 CombatTab:CreateToggle({
-    Name = "Fling Aura",
+    Name = "📍 Position Damage",
     CurrentValue = false,
-    Flag = "FlingAura",
-    Callback = function(Value)
-        Settings.FlingAura = Value
+    Flag = "PosDmg",
+    Callback = function(V)
+        S.PositionDamage = V
         task.spawn(function()
-            while Settings.FlingAura do
+            while S.PositionDamage do
                 task.wait(0.2)
-                for _, p in pairs(Players:GetPlayers()) do
-                    pcall(function()
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                            local dist = (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if dist <= AuraRange then
-                                flingPlayer(p)
-                            end
-                        end
-                    end)
-                end
+                pcall(function()
+                    local target = closest(S.AuraRange)
+                    if target and alive(target) then
+                        target.Character.HumanoidRootPart.CFrame = CFrame.new(0, -300, 0)
+                        task.wait(0.1)
+                    end
+                end)
             end
         end)
     end,
 })
 
--- Void Aura
-CombatTab:CreateToggle({
-    Name = "Void Aura",
-    CurrentValue = false,
-    Flag = "VoidAura",
-    Callback = function(Value)
-        Settings.VoidAura = Value
-        task.spawn(function()
-            while Settings.VoidAura do
-                task.wait(0.5)
-                for _, p in pairs(Players:GetPlayers()) do
-                    pcall(function()
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                            local dist = (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if dist <= AuraRange then
-                                voidPlayer(p)
+CombatTab:CreateSection("Auras")
+
+local auraTypes = {
+    {name = "☠️ Poison Aura", key = "PoisonAura", effect = "Poison"},
+    {name = "💀 Death Aura", key = "DeathAura", effect = "Death"},
+    {name = "☢️ Radioactive Aura", key = "RadioactiveAura", effect = "Radioactive"},
+    {name = "🔥 Burn Aura", key = "BurnAura", effect = "Burn"},
+    {name = "🌊 Void Aura", key = "VoidAura", effect = "Void"},
+    {name = "🧲 Attraction Aura", key = "AttractionAura", effect = nil},
+    {name = "💨 Fling Aura", key = "FlingAura", effect = nil},
+    {name = "👣 Follow Aura", key = "FollowAura", effect = nil},
+    {name = "👢 Kick Aura (Blob)", key = "KickAura", effect = nil},
+}
+
+for _, aura in pairs(auraTypes) do
+    CombatTab:CreateToggle({
+        Name = aura.name,
+        CurrentValue = false,
+        Flag = aura.key,
+        Callback = function(V)
+            S[aura.key] = V
+            task.spawn(function()
+                while S[aura.key] do
+                    task.wait(0.3)
+                    for _, p in pairs(Players:GetPlayers()) do
+                        pcall(function()
+                            if p ~= LP and alive(p) and dist(p) <= S.AuraRange then
+                                if aura.effect then
+                                    applyGrabEffect(p, aura.effect)
+                                elseif aura.key == "FlingAura" then
+                                    flingPlayer(p)
+                                elseif aura.key == "AttractionAura" then
+                                    p.Character.HumanoidRootPart.CFrame = HRP.CFrame * CFrame.new(0, 0, -3)
+                                elseif aura.key == "FollowAura" then
+                                    if alive(SelectedPlayer) then
+                                        HRP.CFrame = SelectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
+                                    end
+                                elseif aura.key == "KickAura" then
+                                    local blob = getBlobman()
+                                    if blob then blobKickPlayer(blob, p) end
+                                end
                             end
-                        end
-                    end)
+                        end)
+                    end
                 end
-            end
-        end)
-    end,
+            end)
+        end,
+    })
+end
+
+CombatTab:CreateSlider({
+    Name = "Custom Fling Aura Strength",
+    Range = {100, 99999},
+    Increment = 500,
+    Suffix = "power",
+    CurrentValue = 9999,
+    Flag = "FlingAuraStr",
+    Callback = function(V) S.FlingPower = V end,
 })
 
--- Poison Aura
+CombatTab:CreateSection("Defense / Antis")
+
 CombatTab:CreateToggle({
-    Name = "Poison Aura",
+    Name = "🛡️ Anti Grab",
     CurrentValue = false,
-    Flag = "PoisonAura",
-    Callback = function(Value)
-        Settings.PoisonAura = Value
+    Flag = "AntiGrab",
+    Callback = function(V)
+        S.AntiGrab = V
         task.spawn(function()
-            while Settings.PoisonAura do
-                task.wait(0.5)
-                for _, p in pairs(Players:GetPlayers()) do
-                    pcall(function()
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                            local dist = (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if dist <= AuraRange then
-                                local remote = getDamageRemote()
-                                if remote then
-                                    remote:FireServer(p.Character.HumanoidRootPart, "Poison")
+            while S.AntiGrab do
+                task.wait(0.05)
+                pcall(function()
+                    for _, v in pairs(Char:GetDescendants()) do
+                        if (v:IsA("Weld") or v:IsA("WeldConstraint")) then
+                            local p0, p1 = v.Part0, v.Part1
+                            if p0 and p1 then
+                                if not p0:IsDescendantOf(Char) or not p1:IsDescendantOf(Char) then
+                                    v:Destroy()
                                 end
                             end
                         end
-                    end)
-                end
-            end
-        end)
-    end,
-})
-
--- Follow Aura
-CombatTab:CreateToggle({
-    Name = "Follow Aura",
-    CurrentValue = false,
-    Flag = "FollowAura",
-    Callback = function(Value)
-        Settings.FollowAura = Value
-        task.spawn(function()
-            while Settings.FollowAura do
-                RunService.Heartbeat:Wait()
-                pcall(function()
-                    if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                        HumanoidRootPart.CFrame = SelectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
+                    end
+                    -- Destroy seat welds (anti blobman grab)
+                    if Hum.SeatPart and not Hum.SeatPart:IsDescendantOf(Char) then
+                        Hum.Jump = true
                     end
                 end)
             end
@@ -816,51 +1003,66 @@ CombatTab:CreateToggle({
     end,
 })
 
--- Kill Aura
 CombatTab:CreateToggle({
-    Name = "Kill Aura",
+    Name = "🛡️ Gucci Anti (Advanced)",
     CurrentValue = false,
-    Flag = "KillAura",
-    Callback = function(Value)
-        Settings.KillAura = Value
+    Flag = "GucciAnti",
+    Callback = function(V)
+        S.GucciAnti = V
         task.spawn(function()
-            while Settings.KillAura do
-                task.wait(0.3)
-                for _, p in pairs(Players:GetPlayers()) do
-                    pcall(function()
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                            local dist = (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if dist <= AuraRange then
-                                p.Character.HumanoidRootPart.CFrame = CFrame.new(0, -500, 0)
+            while S.GucciAnti do
+                task.wait(0.02)
+                pcall(function()
+                    -- Remove all external welds + forces
+                    for _, v in pairs(Char:GetDescendants()) do
+                        if v:IsA("Weld") or v:IsA("WeldConstraint") then
+                            local p0, p1 = v.Part0, v.Part1
+                            if p0 and p1 and (not p0:IsDescendantOf(Char) or not p1:IsDescendantOf(Char)) then
+                                v:Destroy()
                             end
                         end
-                    end)
-                end
+                        if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity") then
+                            if v.Parent and v.Parent:IsDescendantOf(Char) then
+                                v:Destroy()
+                            end
+                        end
+                    end
+                    -- Kill velocity
+                    if HRP.Velocity.Magnitude > 300 then
+                        HRP.Velocity = Vector3.zero
+                        HRP.RotVelocity = Vector3.zero
+                    end
+                    -- Unseat if grabbed
+                    if Hum.SeatPart and not Hum.SeatPart:IsDescendantOf(Char) then
+                        Hum.Jump = true
+                    end
+                end)
             end
         end)
     end,
 })
 
-local DefSection = CombatTab:CreateSection("Defensive")
-
--- Anti Grab
 CombatTab:CreateToggle({
-    Name = "Anti Grab",
+    Name = "🛡️ Anti Blobman",
     CurrentValue = false,
-    Flag = "AntiGrab",
-    Callback = function(Value)
-        Settings.AntiGrab = Value
+    Flag = "AntiBlobman",
+    Callback = function(V)
+        S.AntiBlobman = V
         task.spawn(function()
-            while Settings.AntiGrab do
-                task.wait(0.1)
+            while S.AntiBlobman do
+                task.wait(0.05)
                 pcall(function()
-                    for _, v in pairs(Character:GetDescendants()) do
-                        if v:IsA("Weld") or v:IsA("WeldConstraint") then
-                            local p0 = v:IsA("Weld") and v.Part0 or v.Part0
-                            local p1 = v:IsA("Weld") and v.Part1 or v.Part1
-                            if p0 and p1 then
-                                local isExternal = (not p0:IsDescendantOf(Character) or not p1:IsDescendantOf(Character))
-                                if isExternal then
+                    if Hum.SeatPart then
+                        local seat = Hum.SeatPart
+                        if seat.Parent and (seat.Parent.Name:lower():find("blob")) then
+                            Hum.Jump = true
+                        end
+                    end
+                    for _, v in pairs(Char:GetDescendants()) do
+                        if (v:IsA("Weld") or v:IsA("WeldConstraint")) then
+                            if v.Part0 and v.Part1 then
+                                local other = v.Part0:IsDescendantOf(Char) and v.Part1 or v.Part0
+                                if other and other.Parent and (other.Parent.Name:lower():find("blob") or other.Name:lower():find("hand")) then
                                     v:Destroy()
                                 end
                             end
@@ -872,42 +1074,39 @@ CombatTab:CreateToggle({
     end,
 })
 
--- Anti Explosion
 CombatTab:CreateToggle({
-    Name = "Anti Explosion",
+    Name = "🛡️ Anti Explosion",
     CurrentValue = false,
-    Flag = "AntiExplosion",
-    Callback = function(Value)
-        Settings.AntiExplosion = Value
-        if Value then
-            Workspace.DescendantAdded:Connect(function(obj)
-                if Settings.AntiExplosion and obj:IsA("Explosion") then
-                    obj.BlastPressure = 0
-                    obj.BlastRadius = 0
-                    obj.DestroyJointRadiusPercent = 0
-                end
-            end)
-        end
+    Flag = "AntiExpl",
+    Callback = function(V)
+        S.AntiExplosion = V
     end,
 })
 
--- Anti Kick (не позволяет себя кикнуть)
+WS.DescendantAdded:Connect(function(obj)
+    if S.AntiExplosion and obj:IsA("Explosion") then
+        obj.BlastPressure = 0
+        obj.BlastRadius = 0
+        obj.DestroyJointRadiusPercent = 0
+    end
+end)
+
 CombatTab:CreateToggle({
-    Name = "Anti Kick",
+    Name = "🛡️ Anti Kick (Velocity Block)",
     CurrentValue = false,
     Flag = "AntiKick",
-    Callback = function(Value)
-        Settings.AntiKick = Value
+    Callback = function(V)
+        S.AntiKick = V
         task.spawn(function()
-            while Settings.AntiKick do
-                task.wait(0.05)
+            while S.AntiKick do
+                task.wait(0.03)
                 pcall(function()
-                    if HumanoidRootPart.Velocity.Magnitude > 200 then
-                        HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
-                        HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                    if HRP.Velocity.Magnitude > 200 then
+                        HRP.Velocity = Vector3.zero
+                        HRP.RotVelocity = Vector3.zero
                     end
-                    for _, v in pairs(HumanoidRootPart:GetChildren()) do
-                        if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") then
+                    for _, v in pairs(HRP:GetChildren()) do
+                        if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity") then
                             v:Destroy()
                         end
                     end
@@ -917,93 +1116,18 @@ CombatTab:CreateToggle({
     end,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: 🏃 PLAYER
--- ═══════════════════════════════════════════════════
-local PlayerTab = Window:CreateTab("🏃 Player", 0)
-
--- Walk Speed
-PlayerTab:CreateSlider({
-    Name = "Walk Speed",
-    Range = {16, 500},
-    Increment = 1,
-    Suffix = "Speed",
-    CurrentValue = 16,
-    Flag = "WalkSpeed",
-    Callback = function(Value)
-        WalkSpeedVal = Value
-        if Humanoid then
-            Humanoid.WalkSpeed = Value
-        end
-    end,
-})
-
--- Jump Power
-PlayerTab:CreateSlider({
-    Name = "Jump Power",
-    Range = {50, 500},
-    Increment = 1,
-    Suffix = "Power",
-    CurrentValue = 50,
-    Flag = "JumpPower",
-    Callback = function(Value)
-        JumpPowerVal = Value
-        if Humanoid then
-            Humanoid.UseJumpPower = true
-            Humanoid.JumpPower = Value
-        end
-    end,
-})
-
--- Infinite Jump
-PlayerTab:CreateToggle({
-    Name = "Infinite Jump",
+CombatTab:CreateToggle({
+    Name = "🛡️ Anti Void",
     CurrentValue = false,
-    Flag = "InfJump",
-    Callback = function(Value)
-        Settings.InfJump = Value
-    end,
-})
-
-UserInputService.JumpRequest:Connect(function()
-    if Settings.InfJump and Character and Humanoid then
-        Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-    end
-end)
-
--- Noclip
-PlayerTab:CreateToggle({
-    Name = "Noclip",
-    CurrentValue = false,
-    Flag = "Noclip",
-    Callback = function(Value)
-        Settings.Noclip = Value
-    end,
-})
-
-RunService.Stepped:Connect(function()
-    if Settings.Noclip and Character then
-        for _, part in pairs(Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
--- CFrame Speed Hack
-PlayerTab:CreateToggle({
-    Name = "Speed Hack (CFrame)",
-    CurrentValue = false,
-    Flag = "SpeedHack",
-    Callback = function(Value)
-        Settings.SpeedHack = Value
+    Flag = "AntiVoid",
+    Callback = function(V)
+        S.AntiVoid = V
         task.spawn(function()
-            while Settings.SpeedHack do
-                RunService.Heartbeat:Wait()
+            while S.AntiVoid do
+                task.wait(0.1)
                 pcall(function()
-                    if Humanoid and Humanoid.MoveDirection.Magnitude > 0 then
-                        HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + Humanoid.MoveDirection * 2
+                    if HRP.Position.Y < -100 then
+                        HRP.CFrame = CFrame.new(0, 50, 0)
                     end
                 end)
             end
@@ -1011,70 +1135,158 @@ PlayerTab:CreateToggle({
     end,
 })
 
--- Invincibility
-PlayerTab:CreateToggle({
-    Name = "Invincibility (God Mode)",
+CombatTab:CreateToggle({
+    Name = "🛡️ Anti Burn",
     CurrentValue = false,
-    Flag = "GodMode",
-    Callback = function(Value)
-        if Value then
-            pcall(function()
-                -- Бесконечное здоровье
-                task.spawn(function()
-                    while Value do
-                        pcall(function()
-                            if Humanoid then
-                                Humanoid.Health = Humanoid.MaxHealth
-                            end
-                        end)
-                        task.wait(0.1)
+    Flag = "AntiBurn",
+    Callback = function(V)
+        S.AntiBurn = V
+        task.spawn(function()
+            while S.AntiBurn do
+                task.wait(0.5)
+                pcall(function()
+                    for _, v in pairs(Char:GetDescendants()) do
+                        if v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                            v:Destroy()
+                        end
                     end
                 end)
+            end
+        end)
+    end,
+})
+
+CombatTab:CreateToggle({
+    Name = "🛡️ Anti Lag",
+    CurrentValue = false,
+    Flag = "AntiLag",
+    Callback = function(V)
+        S.AntiLag = V
+        if V then
+            pcall(function()
+                for _, v in pairs(WS:GetDescendants()) do
+                    if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam") then
+                        v.Enabled = false
+                    end
+                    if v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                        v:Destroy()
+                    end
+                end
+                game:GetService("Lighting").GlobalShadows = false
+                game:GetService("Lighting").FogEnd = 99999
+                settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
             end)
         end
     end,
 })
 
--- Fly
-local flying = false
-local flySpeed = 50
-local flyBV, flyBG
+-- ╔══════════════════════════╗
+-- ║   TAB: 🏃 PLAYER        ║
+-- ╚══════════════════════════╝
+local PlayerTab = Window:CreateTab("🏃 Player", 0)
+
+PlayerTab:CreateSlider({
+    Name = "Walk Speed",
+    Range = {16, 500},
+    Increment = 1,
+    Suffix = "speed",
+    CurrentValue = 16,
+    Flag = "WS",
+    Callback = function(V) pcall(function() Hum.WalkSpeed = V end) end,
+})
+
+PlayerTab:CreateSlider({
+    Name = "Jump Power",
+    Range = {50, 500},
+    Increment = 1,
+    Suffix = "power",
+    CurrentValue = 50,
+    Flag = "JP",
+    Callback = function(V)
+        pcall(function()
+            Hum.UseJumpPower = true
+            Hum.JumpPower = V
+        end)
+    end,
+})
 
 PlayerTab:CreateToggle({
-    Name = "Fly",
+    Name = "♾️ Infinite Jump",
+    CurrentValue = false,
+    Flag = "InfJump",
+    Callback = function(V) S.InfJump = V end,
+})
+
+UIS.JumpRequest:Connect(function()
+    if S.InfJump and Hum then
+        Hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+PlayerTab:CreateToggle({
+    Name = "👻 Noclip",
+    CurrentValue = false,
+    Flag = "Noclip",
+    Callback = function(V) S.Noclip = V end,
+})
+
+RS.Stepped:Connect(function()
+    if S.Noclip and Char then
+        for _, p in pairs(Char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+end)
+
+PlayerTab:CreateToggle({
+    Name = "🛡️ God Mode",
+    CurrentValue = false,
+    Flag = "GodMode",
+    Callback = function(V)
+        S.GodMode = V
+        task.spawn(function()
+            while S.GodMode do
+                task.wait(0.1)
+                pcall(function() Hum.Health = Hum.MaxHealth end)
+            end
+        end)
+    end,
+})
+
+-- Fly
+local flyBV, flyBG
+PlayerTab:CreateToggle({
+    Name = "✈️ Fly",
     CurrentValue = false,
     Flag = "Fly",
-    Callback = function(Value)
-        flying = Value
-        if Value then
+    Callback = function(V)
+        S.Fly = V
+        if V then
             flyBV = Instance.new("BodyVelocity")
-            flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            flyBV.Velocity = Vector3.new(0, 0, 0)
-            flyBV.Parent = HumanoidRootPart
-
+            flyBV.MaxForce = Vector3.new(1e9,1e9,1e9)
+            flyBV.Velocity = Vector3.zero
+            flyBV.Parent = HRP
             flyBG = Instance.new("BodyGyro")
-            flyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            flyBG.MaxTorque = Vector3.new(1e9,1e9,1e9)
             flyBG.P = 9e4
-            flyBG.Parent = HumanoidRootPart
-
+            flyBG.Parent = HRP
             task.spawn(function()
-                while flying do
-                    RunService.Heartbeat:Wait()
+                while S.Fly do
+                    RS.Heartbeat:Wait()
                     pcall(function()
-                        local cam = Workspace.CurrentCamera
-                        local moveDir = Humanoid.MoveDirection
-                        if moveDir.Magnitude > 0 then
-                            flyBV.Velocity = cam.CFrame.LookVector * flySpeed
+                        local cam = WS.CurrentCamera
+                        if Hum.MoveDirection.Magnitude > 0 then
+                            flyBV.Velocity = cam.CFrame.LookVector * S.FlySpeed
                         else
-                            flyBV.Velocity = Vector3.new(0, 0, 0)
+                            flyBV.Velocity = Vector3.zero
                         end
                         flyBG.CFrame = cam.CFrame
                     end)
                 end
             end)
         else
-            if flyBV then flyBV:Destroy() end
-            if flyBG then flyBG:Destroy() end
+            pcall(function() flyBV:Destroy() end)
+            pcall(function() flyBG:Destroy() end)
         end
     end,
 })
@@ -1085,71 +1297,59 @@ PlayerTab:CreateSlider({
     Increment = 5,
     Suffix = "speed",
     CurrentValue = 50,
-    Flag = "FlySpeed",
-    Callback = function(Value)
-        flySpeed = Value
-    end,
+    Flag = "FlySpd",
+    Callback = function(V) S.FlySpeed = V end,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: 👁 VISUALS
--- ═══════════════════════════════════════════════════
-local VisualsTab = Window:CreateTab("👁 Visuals", 0)
+-- ╔══════════════════════════╗
+-- ║   TAB: 👁 VISUALS       ║
+-- ╚══════════════════════════╝
+local VisTab = Window:CreateTab("👁 Visuals", 0)
 
--- ESP
-VisualsTab:CreateToggle({
-    Name = "ESP Players",
+VisTab:CreateToggle({
+    Name = "👁 ESP Players",
     CurrentValue = false,
     Flag = "ESP",
-    Callback = function(Value)
-        if Value then
+    Callback = function(V)
+        if V then
             local function addESP(player)
-                if player == LocalPlayer then return end
+                if player == LP then return end
                 local function onChar(char)
-                    if not Value then return end
                     local head = char:WaitForChild("Head", 5)
                     if not head then return end
-
                     local bb = Instance.new("BillboardGui")
-                    bb.Name = "DMM_ESP"
-                    bb.Adornee = head
-                    bb.Size = UDim2.new(0, 120, 0, 50)
-                    bb.StudsOffset = Vector3.new(0, 3, 0)
-                    bb.AlwaysOnTop = true
-                    bb.Parent = head
-
-                    local nameLabel = Instance.new("TextLabel")
-                    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
-                    nameLabel.BackgroundTransparency = 1
-                    nameLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-                    nameLabel.TextStrokeTransparency = 0.5
-                    nameLabel.Text = player.Name
-                    nameLabel.TextScaled = true
-                    nameLabel.Font = Enum.Font.GothamBold
-                    nameLabel.Parent = bb
-
-                    local distLabel = Instance.new("TextLabel")
-                    distLabel.Size = UDim2.new(1, 0, 0.5, 0)
-                    distLabel.Position = UDim2.new(0, 0, 0.5, 0)
-                    distLabel.BackgroundTransparency = 1
-                    distLabel.TextColor3 = Color3.new(1, 1, 1)
-                    distLabel.TextStrokeTransparency = 0.5
-                    distLabel.TextScaled = true
-                    distLabel.Font = Enum.Font.Gotham
-                    distLabel.Parent = bb
-
+                    bb.Name = "DMM_ESP"; bb.Adornee = head
+                    bb.Size = UDim2.new(0,120,0,50)
+                    bb.StudsOffset = Vector3.new(0,3,0)
+                    bb.AlwaysOnTop = true; bb.Parent = head
+                    local nl = Instance.new("TextLabel")
+                    nl.Size = UDim2.new(1,0,0.5,0)
+                    nl.BackgroundTransparency = 1
+                    nl.TextColor3 = Color3.fromRGB(255,50,50)
+                    nl.TextStrokeTransparency = 0.5
+                    nl.Text = player.Name
+                    nl.TextScaled = true
+                    nl.Font = Enum.Font.GothamBold
+                    nl.Parent = bb
+                    local dl = Instance.new("TextLabel")
+                    dl.Size = UDim2.new(1,0,0.5,0)
+                    dl.Position = UDim2.new(0,0,0.5,0)
+                    dl.BackgroundTransparency = 1
+                    dl.TextColor3 = Color3.new(1,1,1)
+                    dl.TextStrokeTransparency = 0.5
+                    dl.TextScaled = true
+                    dl.Font = Enum.Font.Gotham
+                    dl.Parent = bb
                     local hl = Instance.new("Highlight")
                     hl.Name = "DMM_HL"
-                    hl.FillColor = Color3.fromRGB(255, 0, 0)
+                    hl.FillColor = Color3.fromRGB(255,0,0)
                     hl.FillTransparency = 0.7
-                    hl.OutlineColor = Color3.fromRGB(255, 255, 0)
+                    hl.OutlineColor = Color3.fromRGB(255,255,0)
                     hl.Parent = char
-
                     task.spawn(function()
-                        while char and char.Parent and head and head.Parent do
+                        while char.Parent and head.Parent do
                             pcall(function()
-                                local d = math.floor((HumanoidRootPart.Position - head.Position).Magnitude)
-                                distLabel.Text = "[" .. d .. "m]"
+                                dl.Text = "["..math.floor((HRP.Position - head.Position).Magnitude).."m]"
                             end)
                             task.wait(0.5)
                         end
@@ -1164,9 +1364,7 @@ VisualsTab:CreateToggle({
             for _, p in pairs(Players:GetPlayers()) do
                 if p.Character then
                     for _, v in pairs(p.Character:GetDescendants()) do
-                        if v.Name == "DMM_ESP" or v.Name == "DMM_HL" then
-                            v:Destroy()
-                        end
+                        if v.Name == "DMM_ESP" or v.Name == "DMM_HL" then v:Destroy() end
                     end
                 end
             end
@@ -1174,168 +1372,160 @@ VisualsTab:CreateToggle({
     end,
 })
 
--- Fullbright
-VisualsTab:CreateToggle({
-    Name = "Fullbright",
+VisTab:CreateToggle({
+    Name = "💡 Fullbright",
     CurrentValue = false,
-    Flag = "Fullbright",
-    Callback = function(Value)
+    Flag = "FB",
+    Callback = function(V)
         local L = game:GetService("Lighting")
-        if Value then
-            L.Brightness = 2
-            L.ClockTime = 14
-            L.FogEnd = 100000
-            L.GlobalShadows = false
-            L.Ambient = Color3.fromRGB(178, 178, 178)
+        if V then
+            L.Brightness = 2; L.ClockTime = 14; L.FogEnd = 1e6
+            L.GlobalShadows = false; L.Ambient = Color3.fromRGB(178,178,178)
         else
-            L.Brightness = 1
-            L.ClockTime = 14
-            L.FogEnd = 10000
-            L.GlobalShadows = true
-            L.Ambient = Color3.fromRGB(0, 0, 0)
+            L.Brightness = 1; L.ClockTime = 14; L.FogEnd = 1e4
+            L.GlobalShadows = true; L.Ambient = Color3.fromRGB(0,0,0)
         end
     end,
 })
 
--- TetraCube Wings (Visual)
-VisualsTab:CreateButton({
+VisTab:CreateButton({
     Name = "✨ TetraCube Wings",
     Callback = function()
         pcall(function()
-            local wing1 = Instance.new("Part")
-            wing1.Name = "DMM_Wing1"
-            wing1.Size = Vector3.new(0.2, 4, 3)
-            wing1.Color = Color3.fromRGB(100, 0, 255)
-            wing1.Material = Enum.Material.Neon
-            wing1.Transparency = 0.3
-            wing1.CanCollide = false
-            wing1.Massless = true
-            wing1.Parent = Character
-
-            local weld1 = Instance.new("Weld")
-            weld1.Part0 = HumanoidRootPart
-            weld1.Part1 = wing1
-            weld1.C0 = CFrame.new(-1.5, 0.5, 0.8) * CFrame.Angles(0, 0, math.rad(-30))
-            weld1.Parent = wing1
-
-            local wing2 = wing1:Clone()
-            wing2.Name = "DMM_Wing2"
-            wing2.Parent = Character
-
-            local weld2 = Instance.new("Weld")
-            weld2.Part0 = HumanoidRootPart
-            weld2.Part1 = wing2
-            weld2.C0 = CFrame.new(1.5, 0.5, 0.8) * CFrame.Angles(0, 0, math.rad(30))
-            weld2.Parent = wing2
+            for i = -1, 1, 2 do
+                local w = Instance.new("Part")
+                w.Name = "DMM_Wing"
+                w.Size = Vector3.new(0.2, 4, 3)
+                w.Color = Color3.fromRGB(100, 0, 255)
+                w.Material = Enum.Material.Neon
+                w.Transparency = 0.3
+                w.CanCollide = false
+                w.Massless = true
+                w.Parent = Char
+                local weld = Instance.new("Weld")
+                weld.Part0 = HRP; weld.Part1 = w
+                weld.C0 = CFrame.new(i * 1.5, 0.5, 0.8) * CFrame.Angles(0, 0, math.rad(-30 * i))
+                weld.Parent = w
+            end
         end)
-        Rayfield:Notify({Title = "DMM HUB", Content = "Wings added!", Duration = 3})
+        Rayfield:Notify({Title="DMM",Content="Wings added!",Duration=2})
     end,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: 🌀 TELEPORT
--- ═══════════════════════════════════════════════════
-local TeleportTab = Window:CreateTab("🌀 Teleport", 0)
+-- ╔══════════════════════════╗
+-- ║   TAB: 🌀 TELEPORT      ║
+-- ╚══════════════════════════╝
+local TpTab = Window:CreateTab("🌀 Teleport", 0)
 
-TeleportTab:CreateDropdown({
-    Name = "Teleport to Player",
-    Options = getPlayerList(),
+TpTab:CreateDropdown({
+    Name = "TP to Player",
+    Options = plrList(),
     CurrentOption = {},
     MultiOption = false,
-    Flag = "TpPlayer",
-    Callback = function(Option)
+    Flag = "TpPlr",
+    Callback = function(Opt)
         pcall(function()
-            local target = Players:FindFirstChild(Option)
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
-                Rayfield:Notify({Title = "DMM HUB", Content = "TP'd to " .. Option, Duration = 2})
+            local t = getPlr(Opt)
+            if alive(t) then
+                HRP.CFrame = t.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
+                Rayfield:Notify({Title="DMM",Content="TP'd to "..Opt,Duration=2})
             end
         end)
     end,
 })
 
-TeleportTab:CreateButton({
-    Name = "TP to Spawn",
-    Callback = function()
-        pcall(function()
-            local spawn = Workspace:FindFirstChild("SpawnLocation") or Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
-            if spawn then
-                HumanoidRootPart.CFrame = spawn.CFrame + Vector3.new(0, 5, 0)
-            else
-                HumanoidRootPart.CFrame = CFrame.new(0, 50, 0)
+TpTab:CreateToggle({
+    Name = "🔄 Loop TP to Selected",
+    CurrentValue = false,
+    Flag = "LoopTP",
+    Callback = function(V)
+        local loopTp = V
+        task.spawn(function()
+            while loopTp do
+                RS.Heartbeat:Wait()
+                pcall(function()
+                    if alive(SelectedPlayer) then
+                        HRP.CFrame = SelectedPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0,0,-3)
+                    end
+                end)
             end
         end)
     end,
 })
 
-TeleportTab:CreateButton({
-    Name = "TP to Random Player",
+TpTab:CreateButton({
+    Name = "🏠 TP to Spawn",
     Callback = function()
         pcall(function()
-            local plrs = {}
+            local sp = WS:FindFirstChildWhichIsA("SpawnLocation", true)
+            if sp then HRP.CFrame = sp.CFrame + Vector3.new(0,5,0)
+            else HRP.CFrame = CFrame.new(0,50,0) end
+        end)
+    end,
+})
+
+TpTab:CreateButton({
+    Name = "🎲 TP to Random Player",
+    Callback = function()
+        pcall(function()
+            local list = {}
             for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    table.insert(plrs, p)
-                end
+                if p ~= LP and alive(p) then table.insert(list, p) end
             end
-            if #plrs > 0 then
-                local rand = plrs[math.random(1, #plrs)]
-                HumanoidRootPart.CFrame = rand.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
-                Rayfield:Notify({Title = "DMM HUB", Content = "TP'd to " .. rand.Name, Duration = 2})
+            if #list > 0 then
+                local r = list[math.random(#list)]
+                HRP.CFrame = r.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
+                Rayfield:Notify({Title="DMM",Content="TP'd to "..r.Name,Duration=2})
             end
         end)
     end,
 })
 
--- ═══════════════════════════════════════════════════
--- TAB: ⚙️ MISC
--- ═══════════════════════════════════════════════════
+-- ╔══════════════════════════╗
+-- ║   TAB: ⚙ MISC           ║
+-- ╚══════════════════════════╝
 local MiscTab = Window:CreateTab("⚙ Misc", 0)
 
--- Anti AFK
+MiscTab:CreateSection("Server Attacks")
+
 MiscTab:CreateToggle({
-    Name = "Anti AFK",
-    CurrentValue = true,
-    Flag = "AntiAFK",
-    Callback = function(Value)
-        if Value then
-            LocalPlayer.Idled:Connect(function()
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.W, false, game)
+    Name = "💥 Destroy Server (Loop Fling All)",
+    CurrentValue = false,
+    Flag = "DestroyServer",
+    Callback = function(V)
+        S.DestroyServer = V
+        task.spawn(function()
+            while S.DestroyServer do
                 task.wait(0.1)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-            end)
-        end
+                for _, p in pairs(Players:GetPlayers()) do
+                    pcall(function()
+                        if p ~= LP and alive(p) then
+                            flingPlayer(p)
+                            local blob = getBlobman()
+                            if blob then blobKickPlayer(blob, p) end
+                        end
+                    end)
+                end
+            end
+        end)
     end,
 })
 
--- Auto Claim Cash
 MiscTab:CreateToggle({
-    Name = "Auto Claim Cash / Coins",
+    Name = "📡 Lag Server",
     CurrentValue = false,
-    Flag = "AutoCash",
-    Callback = function(Value)
-        Settings.AutoClaimCash = Value
+    Flag = "LagSrv",
+    Callback = function(V)
+        S.LagServer = V
         task.spawn(function()
-            while Settings.AutoClaimCash do
-                task.wait(1)
+            while S.LagServer do
+                task.wait(0.01)
                 pcall(function()
-                    -- Метод 1: ProximityPrompts
-                    for _, obj in pairs(Workspace:GetDescendants()) do
-                        if obj:IsA("ProximityPrompt") then
-                            fireproximityprompt(obj)
-                        end
-                    end
-                    -- Метод 2: Remotes
-                    local cashRemote = getCashRemote()
-                    if cashRemote then
-                        cashRemote:FireServer()
-                    end
-                    -- Метод 3: Touch coins
-                    for _, obj in pairs(Workspace:GetDescendants()) do
-                        if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("cash") or obj.Name:lower():find("money")) then
-                            firetouchinterest(HumanoidRootPart, obj, 0)
-                            task.wait(0.05)
-                            firetouchinterest(HumanoidRootPart, obj, 1)
+                    for _, r in pairs(Rep:GetDescendants()) do
+                        if r:IsA("RemoteEvent") then
+                            for i = 1, 5 do
+                                r:FireServer(string.rep("lag", 500))
+                            end
                         end
                     end
                 end)
@@ -1344,43 +1534,229 @@ MiscTab:CreateToggle({
     end,
 })
 
--- Click TP (нажми и телепортируйся)
-local clickTpEnabled = false
 MiscTab:CreateToggle({
-    Name = "Click Teleport",
+    Name = "🔥 Burn ALL Players",
     CurrentValue = false,
-    Flag = "ClickTP",
-    Callback = function(Value)
-        clickTpEnabled = Value
+    Flag = "BurnAll",
+    Callback = function(V)
+        S.BurnAll = V
+        task.spawn(function()
+            while S.BurnAll do
+                task.wait(1)
+                for _, p in pairs(Players:GetPlayers()) do
+                    pcall(function()
+                        if p ~= LP and alive(p) then
+                            applyGrabEffect(p, "Burn")
+                        end
+                    end)
+                end
+            end
+        end)
     end,
 })
 
-local Mouse = LocalPlayer:GetMouse()
-Mouse.Button1Down:Connect(function()
-    if clickTpEnabled and Mouse.Hit then
-        HumanoidRootPart.CFrame = Mouse.Hit + Vector3.new(0, 3, 0)
-    end
-end)
+MiscTab:CreateToggle({
+    Name = "🔗 Bring Server (All to You)",
+    CurrentValue = false,
+    Flag = "BringAll",
+    Callback = function(V)
+        S.BringServer = V
+        task.spawn(function()
+            while S.BringServer do
+                task.wait(0.3)
+                for _, p in pairs(Players:GetPlayers()) do
+                    pcall(function()
+                        if p ~= LP and alive(p) then
+                            p.Character.HumanoidRootPart.CFrame = HRP.CFrame * CFrame.new(math.random(-5,5), 0, math.random(-5,5))
+                        end
+                    end)
+                end
+            end
+        end)
+    end,
+})
 
--- Rejoin
+MiscTab:CreateSection("FE Objects")
+
+MiscTab:CreateToggle({
+    Name = "🌪️ FE Object Tornado",
+    CurrentValue = false,
+    Flag = "FeTornado",
+    Callback = function(V)
+        S.FeObjectTornado = V
+        task.spawn(function()
+            local angle = 0
+            while S.FeObjectTornado do
+                RS.Heartbeat:Wait()
+                angle = angle + 5
+                pcall(function()
+                    for _, obj in pairs(WS:GetChildren()) do
+                        if obj:IsA("BasePart") and not obj.Anchored and obj ~= HRP and not obj:IsDescendantOf(Char) then
+                            local radius = 20
+                            local x = HRP.Position.X + math.cos(math.rad(angle)) * radius
+                            local z = HRP.Position.Z + math.sin(math.rad(angle)) * radius
+                            local y = HRP.Position.Y + (angle % 360) / 36
+                            obj.CFrame = CFrame.new(x, y, z)
+                        end
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "🌐 FE Object Aura",
+    CurrentValue = false,
+    Flag = "FeAura",
+    Callback = function(V)
+        S.FeObjectAura = V
+        task.spawn(function()
+            local a = 0
+            while S.FeObjectAura do
+                RS.Heartbeat:Wait()
+                a = a + 3
+                pcall(function()
+                    local i = 0
+                    for _, obj in pairs(WS:GetChildren()) do
+                        if obj:IsA("BasePart") and not obj.Anchored and obj ~= HRP and not obj:IsDescendantOf(Char) then
+                            i = i + 1
+                            local ang = math.rad(a + i * 30)
+                            obj.CFrame = HRP.CFrame * CFrame.new(math.cos(ang)*10, 2, math.sin(ang)*10)
+                        end
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "☁️ FE Object Float",
+    CurrentValue = false,
+    Flag = "FeFloat",
+    Callback = function(V)
+        S.FeObjectFloat = V
+        task.spawn(function()
+            while S.FeObjectFloat do
+                task.wait(0.1)
+                pcall(function()
+                    for _, obj in pairs(WS:GetChildren()) do
+                        if obj:IsA("BasePart") and not obj.Anchored and not obj:IsDescendantOf(Char) then
+                            local bv = Instance.new("BodyVelocity")
+                            bv.MaxForce = Vector3.new(0,1e5,0)
+                            bv.Velocity = Vector3.new(0, 30, 0)
+                            bv.Parent = obj
+                            Debris:AddItem(bv, 0.5)
+                        end
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "🔊 Spam Sounds",
+    CurrentValue = false,
+    Flag = "SpamSnd",
+    Callback = function(V)
+        S.SpamSounds = V
+        task.spawn(function()
+            while S.SpamSounds do
+                task.wait(0.1)
+                pcall(function()
+                    for _, obj in pairs(WS:GetDescendants()) do
+                        if obj:IsA("Sound") then
+                            obj:Play()
+                        end
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateSection("Utility")
+
+MiscTab:CreateToggle({
+    Name = "💰 Auto Claim Cash",
+    CurrentValue = false,
+    Flag = "AutoCash",
+    Callback = function(V)
+        local autoCash = V
+        task.spawn(function()
+            while autoCash do
+                task.wait(0.5)
+                pcall(function()
+                    for _, obj in pairs(WS:GetDescendants()) do
+                        if obj:IsA("ProximityPrompt") then
+                            fireproximityprompt(obj)
+                        end
+                    end
+                    -- Touch coins
+                    for _, obj in pairs(WS:GetDescendants()) do
+                        if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("cash")) then
+                            firetouchinterest(HRP, obj, 0)
+                            task.wait(0.02)
+                            firetouchinterest(HRP, obj, 1)
+                        end
+                    end
+                end)
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "🚫 Anti AFK",
+    CurrentValue = true,
+    Flag = "AntiAFK",
+    Callback = function(V)
+        if V then
+            LP.Idled:Connect(function()
+                VIM:SendKeyEvent(true, Enum.KeyCode.W, false, game)
+                task.wait(0.1)
+                VIM:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+            end)
+        end
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name = "🖱️ Click Teleport",
+    CurrentValue = false,
+    Flag = "ClickTP",
+    Callback = function(V)
+        local clickTp = V
+        local mouse = LP:GetMouse()
+        mouse.Button1Down:Connect(function()
+            if clickTp and mouse.Hit then
+                HRP.CFrame = mouse.Hit + Vector3.new(0,3,0)
+            end
+        end)
+    end,
+})
+
+MiscTab:CreateSection("Server")
+
 MiscTab:CreateButton({
     Name = "🔄 Rejoin Server",
     Callback = function()
-        game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+        game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LP)
     end,
 })
 
--- Server Hop
 MiscTab:CreateButton({
     Name = "🌐 Server Hop",
     Callback = function()
         pcall(function()
-            local servers = game.HttpService:JSONDecode(
-                game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+            local data = game.HttpService:JSONDecode(
+                game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
             )
-            for _, server in pairs(servers.data) do
-                if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+            for _, s in pairs(data.data) do
+                if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, s.id, LP)
                     break
                 end
             end
@@ -1388,93 +1764,61 @@ MiscTab:CreateButton({
     end,
 })
 
--- Copy Game Link
 MiscTab:CreateButton({
     Name = "📋 Copy Game Link",
     Callback = function()
-        setclipboard("https://www.roblox.com/games/" .. game.PlaceId)
-        Rayfield:Notify({Title = "DMM HUB", Content = "Link copied!", Duration = 2})
+        pcall(function()
+            setclipboard("https://www.roblox.com/games/"..game.PlaceId)
+        end)
+        Rayfield:Notify({Title="DMM",Content="Link copied!",Duration=2})
     end,
 })
 
--- Destroy Hub
 MiscTab:CreateButton({
     Name = "❌ Destroy DMM HUB",
-    Callback = function()
-        Rayfield:Destroy()
-    end,
+    Callback = function() Rayfield:Destroy() end,
 })
 
--- ═══════════════════════════════════════════════════
--- GLOBAL HOOKS (SuperThrow & SilentAim)
--- ═══════════════════════════════════════════════════
-
--- SuperThrow hook: усиливает все выбрасывания
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-
-    -- Super Throw: если бросаем объект, увеличиваем силу
-    if Settings.SuperThrow and method == "FireServer" and self:IsA("RemoteEvent") then
-        if self.Name:lower():find("throw") or self.Name:lower():find("fling") or self.Name:lower():find("launch") then
-            for i, v in pairs(args) do
-                if typeof(v) == "Vector3" then
-                    args[i] = v.Unit * ThrowPower
-                end
-                if typeof(v) == "number" and v > 1 then
-                    args[i] = v * (ThrowPower / 100)
-                end
-            end
-            return oldNamecall(self, unpack(args))
-        end
-    end
-
-    -- Silent Aim: перенаправляет на ближайшего игрока
-    if Settings.SilentAim and method == "FireServer" and self:IsA("RemoteEvent") then
-        if self.Name:lower():find("aim") or self.Name:lower():find("shoot") or self.Name:lower():find("hit") then
-            local target = getClosestPlayer(AuraRange)
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                for i, v in pairs(args) do
-                    if typeof(v) == "Vector3" then
-                        args[i] = target.Character.HumanoidRootPart.Position
-                    end
-                    if typeof(v) == "CFrame" then
-                        args[i] = target.Character.HumanoidRootPart.CFrame
+-- ═══════════════════════════════════════
+-- HOOKS (Silent Aim & Super Throw)
+-- ═══════════════════════════════════════
+pcall(function()
+    local oldNC
+    oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        if method == "FireServer" and self:IsA("RemoteEvent") then
+            -- Silent Aim
+            if S.SilentAim then
+                local target = closest(S.AuraRange)
+                if target and alive(target) then
+                    for i, v in pairs(args) do
+                        if typeof(v) == "Vector3" then
+                            args[i] = target.Character.HumanoidRootPart.Position
+                        end
+                        if typeof(v) == "CFrame" then
+                            args[i] = target.Character.HumanoidRootPart.CFrame
+                        end
                     end
                 end
             end
-            return oldNamecall(self, unpack(args))
         end
-    end
+        
+        return oldNC(self, unpack(args))
+    end))
+end)
 
-    return oldNamecall(self, ...)
-end))
-
--- Super Strength: усиливаем хватку
-if Settings.SuperStrength then
-    Workspace.DescendantAdded:Connect(function(obj)
-        if Settings.SuperStrength then
-            if obj:IsA("BodyPosition") then
-                obj.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            elseif obj:IsA("BodyVelocity") then
-                obj.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            end
-        end
-    end)
-end
-
--- ═══════════════════════════════════════════════════
--- ЗАГРУЗКА
--- ═══════════════════════════════════════════════════
+-- ═══════════════════════════════════════
+-- DONE
+-- ═══════════════════════════════════════
 Rayfield:Notify({
     Title = "💀 DMM HUB",
-    Content = "Loaded! Fling Things and People 🎉",
+    Content = "Loaded! All features ready 🎉",
     Duration = 5,
-    Image = 0,
 })
 
-print("═══════════════════════════════")
-print("  DMM HUB — Loaded Successfully")
-print("  Game: Fling Things and People")
-print("═════���═════════════════════════")
+print("═══════════════════════════════════")
+print("   💀 DMM HUB — Fully Loaded!")
+print("   Game: Fling Things and People")
+print("═══════════════════════════════════")
