@@ -27,7 +27,7 @@ local Window = Rayfield:CreateWindow({
         FileName = "GGOGHubKeyData",  -- Файл сохранения ключа
         SaveKey = true,               -- СОХРАНЯЕТ КЛЮЧ (вводишь 1 раз!)
         GrabKeyFromSite = false,
-        Key = {"C00lGMAN"}            -- Сам ключ
+        Key = {"MagfunLegendUltraGey"}            -- Сам ключ
     }
 })
 
