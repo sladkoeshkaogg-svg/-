@@ -338,7 +338,7 @@ RunService.Heartbeat:Connect(function()
         local success = TeleportBack(7)
         if success then
             Rayfield:Notify({
-                Title = "🛡️ Anti Detected [Hacker]",
+                Title = "🛡️ Anti Kick+Hacker [BETA Ulta OP]",
                 Content = "⚡ Принудительное перемещение!\nВозврат на 7 секунд назад.",
                 Duration = 3,
                 Image = 4483362458
