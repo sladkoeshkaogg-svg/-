@@ -1,49 +1,301 @@
--- Загрузка Rayfield (проверенная ссылка)
+-- Загрузка Rayfield
 local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))()
 
--- Создание окна
 local Window = Rayfield:CreateWindow({
-    Name = "🔥 WORKING HUB",
+    Name = "🔥 FIXED HUB | Anti-Grab",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "by Developer",
+    LoadingSubtitle = "All functions working",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "WorkingHub",
-        FileName = "Settings"
-    },
-    Discord = {
-        Enabled = false,
-        Invite = "",
-        RememberJoins = false
+        FolderName = "FixedHub",
+        FileName = "Config"
     },
     KeySystem = false,
 })
 
--- Утилиты
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
 
--- Получение персонажа (с проверкой)
-local function GetCharacter()
+-- Utils
+function GetChar()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
 
-local function GetHumanoid()
-    local char = GetCharacter()
-    return char:WaitForChild("Humanoid")
+function GetHRP()
+    local char = GetChar()
+    return char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart")
+end
+
+function GetHum()
+    local char = GetChar()
+    return char:FindFirstChildOfClass("Humanoid")
 end
 
 -- =====================
--- PLAYER TAB
+-- FIXED FLY (CFrame Based)
 -- =====================
 local PlayerTab = Window:CreateTab("Player", 4483362458)
-local PlayerSection = PlayerTab:CreateSection("Character Mods")
+local FlySection = PlayerTab:CreateSection("Fly System [FIXED]")
 
--- WalkSpeed (РАБОТАЕТ 100%)
+local Flying = false
+local FlySpeed = 50
+local FlyConnection = nil
+
+-- Новый фикснутый Fly через CFrame (не ломается физика)
+PlayerTab:CreateToggle({
+    Name = "Fly [CFrame Method]",
+    CurrentValue = false,
+    Flag = "FixedFly",
+    Callback = function(Value)
+        Flying = Value
+        local char = GetChar()
+        local hrp = GetHRP()
+        
+        if Value then
+            -- Отключаем гравитацию и физику
+            FlyConnection = RunService.RenderStepped:Connect(function()
+                if not Flying then return end
+                local currentHRP = GetHRP()
+                local camera = workspace.CurrentCamera
+                
+                local moveDir = Vector3.new(0, 0, 0)
+                
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveDir = moveDir + camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveDir = moveDir - camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveDir = moveDir - camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveDir = moveDir + camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveDir = moveDir + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    moveDir = moveDir - Vector3.new(0, 1, 0)
+                end
+                
+                -- Применяем движение
+                if moveDir.Magnitude > 0 then
+                    moveDir = moveDir.Unit * (FlySpeed / 10)
+                    currentHRP.CFrame = currentHRP.CFrame + moveDir
+                end
+                
+                -- Останавливаем падение/физику
+                currentHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                currentHRP.RotVelocity = Vector3.new(0, 0, 0)
+            end)
+            
+            Rayfield:Notify({Title="Fly", Content="Fly enabled! WASD + Space/Shift", Duration=3})
+        else
+            if FlyConnection then
+                FlyConnection:Disconnect()
+                FlyConnection = nil
+            end
+        end
+    end,
+})
+
+PlayerTab:CreateSlider({
+    Name = "Fly Speed",
+    Range = {10, 200},
+    Increment = 5,
+    Suffix = " speed",
+    CurrentValue = 50,
+    Flag = "FlySpeed",
+    Callback = function(Value)
+        FlySpeed = Value
+    end,
+})
+
+-- =====================
+-- ANTI-GRAB [BETA]
+-- =====================
+local AntiGrabSection = PlayerTab:CreateSection("Anti-Grab [BETA]")
+
+local AntiGrabEnabled = false
+local PositionHistory = {} -- История позиций (3 секунды)
+local LastInputTime = tick()
+local IsTeleporting = false -- Чтобы не конфликтовать с телепортом
+
+-- Отслеживаем нажатия клавиш (чтобы понимать, двигаемся ли мы сами)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.Keyboard then
+        if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.A or 
+           input.KeyCode == Enum.KeyCode.S or input.KeyCode == Enum.KeyCode.D or
+           input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.LeftShift then
+            LastInputTime = tick()
+        end
+    end
+end)
+
+-- Сохраняем позицию каждый кадр
+RunService.Heartbeat:Connect(function()
+    if not AntiGrabEnabled then 
+        PositionHistory = {}
+        return 
+    end
+    
+    if Flying or IsTeleporting then return end -- Не работает при полете/телепорте
+    
+    local hrp = GetHRP()
+    if not hrp then return end
+    
+    -- Добавляем текущую позицию в ис��орию
+    table.insert(PositionHistory, 1, {
+        Time = tick(),
+        Pos = hrp.Position,
+        CFrame = hrp.CFrame
+    })
+    
+    -- Удаляем старые записи (старше 3.5 секунд на всякий случай)
+    for i = #PositionHistory, 1, -1 do
+        if tick() - PositionHistory[i].Time > 3.5 then
+            table.remove(PositionHistory, i)
+        end
+    end
+end)
+
+-- Проверка на граб (движение без управления или смена анимации)
+local function CheckAntiGrab()
+    if not AntiGrabEnabled then return end
+    if Flying or IsTeleporting then return end
+    
+    local hrp = GetHRP()
+    local hum = GetHum()
+    if not hrp or not hum then return end
+    
+    -- Проверка 1: Движение без нажатия клавиш (нас тащат)
+    local timeSinceInput = tick() - LastInputTime
+    local velocity = hrp.AssemblyLinearVelocity
+    
+    -- Если движемся быстро, но не нажимали клавиши больше 0.5 секунды
+    if velocity.Magnitude > 25 and timeSinceInput > 0.5 then
+        -- Ищем позицию 3 секунды назад
+        for _, data in ipairs(PositionHistory) do
+            if tick() - data.Time >= 2.9 and tick() - data.Time <= 3.1 then
+                -- Телепортируем назад
+                IsTeleporting = true
+                hrp.CFrame = data.CFrame
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                
+                Rayfield:Notify({
+                    Title = "🛡️ Anti-Grab",
+                    Content = "Обнаружено принудительное движение! Возврат на 3 секунды назад.",
+                    Duration = 4,
+                    Image = 4483362458
+                })
+                
+                task.wait(0.5)
+                IsTeleporting = false
+                break
+            end
+        end
+    end
+end
+
+-- Отслеживание смены анимации (граб обычно форсит анимацию)
+local function SetupAnimationTracker(char)
+    local hum = char:WaitForChild("Humanoid")
+    local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
+    
+    animator.AnimationPlayed:Connect(function(track)
+        if not AntiGrabEnabled then return end
+        if Flying then return end
+        
+        -- Если анимация сменилась, а мы не нажимали клавиши (возможно, нас схватили)
+        if tick() - LastInputTime > 0.3 then
+            local animName = track.Animation and track.Animation.Name or "Unknown"
+            
+            -- Проверяем на типичные названия граб-анимаций
+            local grabKeywords = {"grab", "hold", "carry", "punch", "stun", "ragdoll", "knock", "sleep"}
+            local isGrabAnim = false
+            
+            for _, keyword in ipairs(grabKeywords) do
+                if string.find(string.lower(animName), keyword) then
+                    isGrabAnim = true
+                    break
+                end
+            end
+            
+            -- Также срабатываем на резкую смену анимации без управления
+            if isGrabAnim or track.Priority == Enum.AnimationPriority.Action4 then
+                task.wait(0.1) -- Небольшая задержка чтобы точно поймать момент
+                
+                if AntiGrabEnabled then
+                    local hrp = GetHRP()
+                    if hrp then
+                        -- Ищем позицию 3 секунды назад
+                        for _, data in ipairs(PositionHistory) do
+                            if tick() - data.Time >= 2.9 and tick() - data.Time <= 3.1 then
+                                IsTeleporting = true
+                                hrp.CFrame = data.CFrame
+                                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                track:Stop() -- Останавливаем граб-анимацию
+                                
+                                Rayfield:Notify({
+                                    Title = "🛡️ Anti-Grab",
+                                    Content = "Обнаружена граб-анимация ("..animName..")! Возврат...",
+                                    Duration = 4,
+                                    Image = 4483362458
+                                })
+                                
+                                task.wait(0.5)
+                                IsTeleporting = false
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Подключаем отслеживание анимаций
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1) -- Ждем загрузки
+    SetupAnimationTracker(char)
+end)
+
+if LocalPlayer.Character then
+    SetupAnimationTracker(LocalPlayer.Character)
+end
+
+-- Основной цикл проверки
+RunService.Heartbeat:Connect(CheckAntiGrab)
+
+-- UI Toggle для Anti-Grab
+PlayerTab:CreateToggle({
+    Name = "Anti-Grab [BETA]",
+    CurrentValue = false,
+    Flag = "AntiGrab",
+    Callback = function(Value)
+        AntiGrabEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "🛡️ Anti-Grab",
+                Content = "Включено! При грабе вернет на 3 секунды назад.",
+                Duration = 4
+            })
+            PositionHistory = {} -- Очищаем историю при включении
+        end
+    end,
+})
+
+-- =====================
+-- ОСТАЛЬНЫЕ ФУНКЦИИ (Speed, Noclip, etc)
+-- =====================
+PlayerTab:CreateSection("Movement")
+
+-- WalkSpeed (Работает стабильно)
 PlayerTab:CreateSlider({
     Name = "WalkSpeed",
     Range = {16, 300},
@@ -52,14 +304,14 @@ PlayerTab:CreateSlider({
     CurrentValue = 16,
     Flag = "WalkSpeed",
     Callback = function(Value)
-        local hum = GetHumanoid()
+        local hum = GetHum()
         if hum then
             hum.WalkSpeed = Value
         end
     end,
 })
 
--- JumpPower (РАБОТАЕТ 100%)
+-- JumpPower
 PlayerTab:CreateSlider({
     Name = "JumpPower",
     Range = {50, 300},
@@ -68,35 +320,35 @@ PlayerTab:CreateSlider({
     CurrentValue = 50,
     Flag = "JumpPower",
     Callback = function(Value)
-        local hum = GetHumanoid()
+        local hum = GetHum()
         if hum then
             hum.JumpPower = Value
-            hum.UseJumpPower = true -- Важно для новых игр
+            hum.UseJumpPower = true
         end
     end,
 })
 
--- Infinite Jump (РАБОТАЕТ 100%)
-local InfiniteJump = false
+-- Infinite Jump
+local InfJump = false
 PlayerTab:CreateToggle({
     Name = "Infinite Jump",
     CurrentValue = false,
     Flag = "InfJump",
     Callback = function(Value)
-        InfiniteJump = Value
+        InfJump = Value
     end,
 })
 
 UserInputService.JumpRequest:Connect(function()
-    if InfiniteJump then
-        local hum = GetHumanoid()
+    if InfJump then
+        local hum = GetHum()
         if hum then
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end
 end)
 
--- Noclip (РАБОТАЕТ 100%)
+-- Noclip (Улучшенный)
 local Noclip = false
 PlayerTab:CreateToggle({
     Name = "Noclip",
@@ -120,271 +372,15 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Fly (РАБОТАЕТ 100%)
-local Flying = false
-local FlySpeed = 50
-local FlyBodyVelocity = nil
-
-PlayerTab:CreateToggle({
-    Name = "Fly",
-    CurrentValue = false,
-    Flag = "Fly",
-    Callback = function(Value)
-        Flying = Value
-        local char = GetCharacter()
-        local hum = GetHumanoid()
-        
-        if Flying then
-            -- Создаем BodyVelocity для полета
-            local torso = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-            if torso then
-                FlyBodyVelocity = Instance.new("BodyVelocity")
-                FlyBodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
-                FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                FlyBodyVelocity.Parent = torso
-            end
-        else
-            if FlyBodyVelocity then
-                FlyBodyVelocity:Destroy()
-                FlyBodyVelocity = nil
-            end
-        end
-    end,
-})
-
--- Управление полетом
-RunService.RenderStepped:Connect(function()
-    if Flying and FlyBodyVelocity then
-        local char = GetCharacter()
-        local torso = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-        if torso then
-            local camera = workspace.CurrentCamera
-            local moveDirection = Vector3.new(0, 0, 0)
-            
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                moveDirection = moveDirection + camera.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                moveDirection = moveDirection - camera.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                moveDirection = moveDirection - camera.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                moveDirection = moveDirection + camera.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                moveDirection = moveDirection + Vector3.new(0, 1, 0)
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                moveDirection = moveDirection - Vector3.new(0, 1, 0)
-            end
-            
-            if moveDirection.Magnitude > 0 then
-                moveDirection = moveDirection.Unit * FlySpeed
-            end
-            
-            FlyBodyVelocity.Velocity = moveDirection
-        end
-    end
-end)
-
-PlayerTab:CreateSlider({
-    Name = "Fly Speed",
-    Range = {10, 200},
-    Increment = 5,
-    Suffix = " speed",
-    CurrentValue = 50,
-    Flag = "FlySpeed",
-    Callback = function(Value)
-        FlySpeed = Value
-    end,
-})
-
--- Full Bright (РАБОТАЕТ 100%)
-PlayerTab:CreateToggle({
-    Name = "Full Bright",
-    CurrentValue = false,
-    Flag = "FullBright",
-    Callback = function(Value)
-        if Value then
-            Lighting.Brightness = 10
-            Lighting.GlobalShadows = false
-            Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-            Lighting.Ambient = Color3.new(1, 1, 1)
-        else
-            Lighting.Brightness = 2
-            Lighting.GlobalShadows = true
-            Lighting.OutdoorAmbient = Color3.new(0.5, 0.5, 0.5)
-            Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
-        end
-    end,
-})
-
--- God Mode (Полу-бессмертие)
-PlayerTab:CreateButton({
-    Name = "God Mode (Reset Health)",
-    Callback = function()
-        local hum = GetHumanoid()
-        if hum then
-            hum.MaxHealth = math.huge
-            hum.Health = math.huge
-        end
-    end,
-})
-
 -- =====================
--- ESP TAB
--- =====================
-local ESPTab = Window:CreateTab("ESP", 4483362458)
-local ESPSection = ESPTab:CreateSection("Wallhack")
-
-local ESP_ENABLED = false
-local ESP_COLOR = Color3.fromRGB(255, 0, 0)
-local ESP_FILL_TRANSPARENCY = 0.5
-
--- Функция создания ESP
-local function CreateESP(player)
-    if player == LocalPlayer then return end
-    
-    local function ApplyESP(character)
-        if not character then return end
-        
-        -- Удаляем старый ESP если есть
-        local oldHighlight = character:FindFirstChild("ESP_Highlight")
-        if oldHighlight then
-            oldHighlight:Destroy()
-        end
-        
-        if ESP_ENABLED then
-            local highlight = Instance.new("Highlight")
-            highlight.Name = "ESP_Highlight"
-            highlight.FillColor = ESP_COLOR
-            highlight.OutlineColor = Color3.new(1, 1, 1)
-            highlight.FillTransparency = ESP_FILL_TRANSPARENCY
-            highlight.OutlineTransparency = 0
-            highlight.Adornee = character
-            highlight.Parent = character
-            
-            -- Добавляем BillboardGui с именем
-            local head = character:FindFirstChild("Head")
-            if head and not head:FindFirstChild("ESP_Name") then
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "ESP_Name"
-                billboard.AlwaysOnTop = true
-                billboard.Size = UDim2.new(0, 100, 0, 50)
-                billboard.StudsOffset = Vector3.new(0, 2, 0)
-                billboard.Parent = head
-                
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.BackgroundTransparency = 1
-                textLabel.Text = player.Name
-                textLabel.TextColor3 = ESP_COLOR
-                textLabel.TextStrokeTransparency = 0
-                textLabel.TextScaled = true
-                textLabel.Parent = billboard
-            end
-        end
-    end
-    
-    -- Применяем к текущему персонажу
-    if player.Character then
-        ApplyESP(player.Character)
-    end
-    
-    -- Применяем к будущим персонажам (respawn)
-    player.CharacterAdded:Connect(function(char)
-        wait(0.5) -- Ждем загрузки персонажа
-        ApplyESP(char)
-    end)
-end
-
--- Включаем ESP для всех игроков
-ESPTab:CreateToggle({
-    Name = "Player ESP (Highlight)",
-    CurrentValue = false,
-    Flag = "ESP",
-    Callback = function(Value)
-        ESP_ENABLED = Value
-        
-        for _, player in pairs(Players:GetPlayers()) do
-            CreateESP(player)
-        end
-        
-        -- Удаляем ESP если выключили
-        if not Value then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Character then
-                    local highlight = player.Character:FindFirstChild("ESP_Highlight")
-                    if highlight then
-                        highlight:Destroy()
-                    end
-                    local head = player.Character:FindFirstChild("Head")
-                    if head then
-                        local nameTag = head:FindFirstChild("ESP_Name")
-                        if nameTag then
-                            nameTag:Destroy()
-                        end
-                    end
-                end
-            end
-        end
-    end,
-})
-
--- Подключаемся к новым игрокам
-Players.PlayerAdded:Connect(function(player)
-    if ESP_ENABLED then
-        CreateESP(player)
-    end
-end)
-
-ESPTab:CreateColorPicker({
-    Name = "ESP Color",
-    Color = Color3.fromRGB(255, 0, 0),
-    Flag = "ESPColor",
-    Callback = function(Value)
-        ESP_COLOR = Value
-        -- Обновляем цвет у существующих
-        for _, player in pairs(Players:GetPlayers()) do
-            if player.Character then
-                local highlight = player.Character:FindFirstChild("ESP_Highlight")
-                if highlight then
-                    highlight.FillColor = Value
-                end
-                local head = player.Character:FindFirstChild("Head")
-                if head then
-                    local nameTag = head:FindFirstChild("ESP_Name")
-                    if nameTag and nameTag:FindFirstChild("TextLabel") then
-                        nameTag.TextLabel.TextColor3 = Value
-                    end
-                end
-            end
-        end
-    end,
-})
-
--- Tracers (линии к игрокам)
-local TracersEnabled = false
-ESPTab:CreateToggle({
-    Name = "Tracers",
-    CurrentValue = false,
-    Flag = "Tracers",
-    Callback = function(Value)
-        TracersEnabled = Value
-    end,
-})
-
--- =====================
--- TELEPORT TAB
+-- TELEPORT (с защитой от Anti-Grab)
 -- =====================
 local TPTab = Window:CreateTab("Teleport", 4483362458)
 
 -- Click TP
 local ClickTP = false
 TPTab:CreateToggle({
-    Name = "Click Teleport (Ctrl + Click)",
+    Name = "Click TP (Ctrl + Click)",
     CurrentValue = false,
     Flag = "ClickTP",
     Callback = function(Value)
@@ -392,71 +388,21 @@ TPTab:CreateToggle({
     end,
 })
 
+local Mouse = LocalPlayer:GetMouse()
 Mouse.Button1Down:Connect(function()
     if ClickTP and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        local char = GetCharacter()
-        local hum = GetHumanoid()
-        if char and Mouse.Hit then
-            char:MoveTo(Mouse.Hit.Position)
+        IsTeleporting = true -- Отключаем Anti-Grab на момент телепорта
+        local hrp = GetHRP()
+        if hrp and Mouse.Hit then
+            hrp.CFrame = CFrame.new(Mouse.Hit.Position + Vector3.new(0, 3, 0))
         end
+        task.wait(0.5)
+        IsTeleporting = false
     end
 end)
 
--- TP to Player
-local selectedPlayer = nil
-local PlayerDropdown = TPTab:CreateDropdown({
-    Name = "Select Player",
-    Options = {},
-    CurrentOption = "",
-    Flag = "TPPlayer",
-    Callback = function(Option)
-        selectedPlayer = Option
-    end,
-})
-
--- Обновляем список игроков
-local function UpdatePlayerList()
-    local playerNames = {}
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            table.insert(playerNames, player.Name)
-        end
-    end
-    PlayerDropdown:Refresh(playerNames, true)
-end
-
-UpdatePlayerList()
-Players.PlayerAdded:Connect(UpdatePlayerList)
-Players.PlayerRemoving:Connect(UpdatePlayerList)
-
-TPTab:CreateButton({
-    Name = "Teleport to Selected",
-    Callback = function()
-        if selectedPlayer then
-            local target = Players:FindFirstChild(selectedPlayer)
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                local char = GetCharacter()
-                if char then
-                    char:MoveTo(target.Character.HumanoidRootPart.Position)
-                end
-            end
-        end
-    end,
-})
-
--- =====================
--- SETTINGS TAB
--- =====================
+-- Settings
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
-
-SettingsTab:CreateButton({
-    Name = "Rejoin Server",
-    Callback = function()
-        local TeleportService = game:GetService("TeleportService")
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    end,
-})
-
 SettingsTab:CreateButton({
     Name = "Destroy GUI",
     Callback = function()
@@ -464,10 +410,11 @@ SettingsTab:CreateButton({
     end,
 })
 
--- Уведомление о загрузке
+-- Уведомление при запуске
+task.wait(1)
 Rayfield:Notify({
     Title = "✅ Script Loaded",
-    Content = "All functions are working! Use Ctrl for ClickTP",
-    Duration = 6.5,
+    Content = "Fly: CFrame метод | Anti-Grab: 3 секунды истории",
+    Duration = 5,
     Image = 4483362458,
 })
