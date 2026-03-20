@@ -3,7 +3,125 @@
 -- ║           + ⭐ Legend OP (Anti-Grab & Anti-Detected)     ║
 -- ║                Built on Rayfield Interface               ║
 -- ╚══════════════════════════════════════════════════════════╝
+-- ╔══════════════════════════════════════════╗
+-- ║        VIDEO INTRO — ВСТАВЬ В НАЧАЛО     ║
+-- ╚══════════════════════════════════════════╝
 
+-- ⚠️ ЗАМЕНИ "rbxassetid://ТВОЙ_ID" НА СВОЙ ID ВИДЕО!
+-- Загрузи видео на Roblox: https://create.roblox.com/dashboard/creations → Video
+-- Получишь ID типа: rbxassetid://123456789
+
+local INTRO_VIDEO_ID = "rbxassetid://5608327882"  -- ← ЗАМЕНИ!
+local INTRO_DURATION = 5  -- сколько секунд показывать (если видео не загрузится — пропустит через 5 сек)
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Создаём GUI
+local IntroGui = Instance.new("ScreenGui")
+IntroGui.Name = "DMM_Intro"
+IntroGui.ResetOnSpawn = false
+IntroGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+IntroGui.DisplayOrder = 999  -- поверх всего
+IntroGui.Parent = PlayerGui
+
+-- Чёрный фон
+local Background = Instance.new("Frame")
+Background.Name = "BG"
+Background.Size = UDim2.new(1, 0, 1, 0)
+Background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+Background.BorderSizePixel = 0
+Background.ZIndex = 100
+Background.Parent = IntroGui
+
+-- Видео
+local VideoFrame = Instance.new("VideoFrame")
+VideoFrame.Name = "IntroVideo"
+VideoFrame.Size = UDim2.new(0.8, 0, 0.8, 0)  -- 80% экрана
+VideoFrame.Position = UDim2.new(0.1, 0, 0.1, 0)  -- по центру
+VideoFrame.AnchorPoint = Vector2.new(0, 0)
+VideoFrame.BackgroundTransparency = 1
+VideoFrame.ZIndex = 101
+VideoFrame.Looped = false
+VideoFrame.Volume = 1
+VideoFrame.Video = INTRO_VIDEO_ID
+VideoFrame.Parent = Background
+
+-- Текст "Нажми чтобы пропустить"
+local SkipLabel = Instance.new("TextLabel")
+SkipLabel.Name = "Skip"
+SkipLabel.Size = UDim2.new(0.3, 0, 0.05, 0)
+SkipLabel.Position = UDim2.new(0.35, 0, 0.92, 0)
+SkipLabel.BackgroundTransparency = 1
+SkipLabel.Text = "Нажми чтобы пропустить..."
+SkipLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+SkipLabel.TextScaled = true
+SkipLabel.Font = Enum.Font.Gotham
+SkipLabel.ZIndex = 102
+SkipLabel.Parent = Background
+
+-- Кнопка пропуска (невидимая, на весь экран)
+local SkipButton = Instance.new("TextButton")
+SkipButton.Name = "SkipBtn"
+SkipButton.Size = UDim2.new(1, 0, 1, 0)
+SkipButton.BackgroundTransparency = 1
+SkipButton.Text = ""
+SkipButton.ZIndex = 103
+SkipButton.Parent = Background
+
+-- Ждём и запускаем
+local introDone = false
+
+local function EndIntro()
+    if introDone then return end
+    introDone = true
+    
+    -- Плавное затухание
+    local fadeOut = TweenService:Create(Background, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
+        BackgroundTransparency = 1
+    })
+    local videoFade = TweenService:Create(VideoFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
+        Volume = 0
+    })
+    
+    fadeOut:Play()
+    videoFade:Play()
+    
+    pcall(function() VideoFrame:Pause() end)
+    
+    fadeOut.Completed:Wait()
+    IntroGui:Destroy()
+    
+    print("✅ Intro finished — Loading HUB...")
+end
+
+-- Нажал = пропустить
+SkipButton.MouseButton1Click:Connect(EndIntro)
+
+-- Запускаем видео
+pcall(function()
+    VideoFrame:Play()
+end)
+
+-- Когда видео закончилось
+VideoFrame.Ended:Connect(EndIntro)
+
+-- Страховка: если видео не загрузилось — пропустить через N секунд
+task.delay(INTRO_DURATION, function()
+    if not introDone then
+        EndIntro()
+    end
+end)
+
+-- Ждём пока интро не закончится
+repeat task.wait(0.1) until introDone
+task.wait(0.3)  -- маленькая пауза перед загрузкой HUB
+
+-- ╔══════════════════════════════════════════╗
+-- ║     КОНЕЦ ИНТРО — ДАЛЬШЕ ИДЁТ ТВОЙ HUB   ║
+-- ╚══════════════════════════════════════════╝
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- ═══════ СЕРВИСЫ ═══════
