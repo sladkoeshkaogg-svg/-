@@ -2,7 +2,7 @@
 local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "🔥 | GGOG HUB",
+    Name = "DMM(Original) | GGOG HUB",
     LoadingTitle = "Loading...",
     LoadingSubtitle = "Modded by:Magfun_legend",
     ConfigurationSaving = {
