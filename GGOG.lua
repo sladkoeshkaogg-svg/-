@@ -148,6 +148,85 @@ local function getPlayerList()
     return list
 end
 
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.3)
+    SetupAntiGrabAnimTracker(char)
+end)
+if LocalPlayer.Character then
+    SetupAntiGrabAnimTracker(LocalPlayer.Character)
+end
+
+PlayerTab:CreateToggle({
+    Name = "Anti-Grab [BETA] 🔴OP",
+    CurrentValue = false,
+    Flag = "AntiGrab",
+    Callback = function(Value)
+        AntiGrabEnabled = Value
+        if Value then PositionHistory = {} end
+    end,
+})
+
+-- =====================
+-- ANTI DETECTED [BETA Hacker]
+-- =====================
+PlayerTab:CreateSection("Anti Detected [BETA Hacker]")
+
+local AntiDetectedCooldown = false
+
+RunService.Heartbeat:Connect(function()
+    if not AntiDetectedEnabled then return end
+    if Flying or IsTeleporting or AntiDetectedCooldown then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local timeSinceInput = tick() - LastInputTime
+    local velocity = hrp.AssemblyLinearVelocity
+    local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+    local fullSpeed = velocity.Magnitude
+    local detected = false
+    if horizontalSpeed > 18 and timeSinceInput > 0.1 then
+        detected = true
+    end
+    if fullSpeed > 50 and timeSinceInput > 0.08 then
+        detected = true
+    end
+    if detected then
+        AntiDetectedCooldown = true
+        local success = TeleportBack(7)
+        if success then
+            Rayfield:Notify({
+                Title = "🛡️ Anti Kick+Hacker [BETA Ultra OP]",
+                Content = "⚡ Принудительное перемещение!\nВозврат на 7 секунд назад.",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+        task.defer(function()
+            task.wait(0.5)
+            AntiDetectedCooldown = false
+        end)
+    end
+end)
+
+PlayerTab:CreateToggle({
+    Name = "Anti Detected [BETA Hacker]",
+    CurrentValue = false,
+    Flag = "AntiDetected",
+    Callback = function(Value)
+        AntiDetectedEnabled = Value
+        if Value then
+            PositionHistory = {}
+            Rayfield:Notify({
+                Title = "🛡️ Anti Detected",
+                Content = "Активировано! Мгновенная реакция.",
+                Duration = 3,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
 local function getClosestPlayer(range)
     local closest, dist = nil, range or math.huge
     for _, p in pairs(Players:GetPlayers()) do
