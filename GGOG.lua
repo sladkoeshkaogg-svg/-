@@ -2,7 +2,7 @@
 local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "DMM(Original) | GGOG HUB",
+    Name = "🔥 | GGOG HUB",
     LoadingTitle = "Loading...",
     LoadingSubtitle = "Modded by:Magfun_legend",
     ConfigurationSaving = {
@@ -34,7 +34,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
@@ -76,8 +75,8 @@ local MovementKeys = {
     [Enum.KeyCode.LeftShift] = true,
 }
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
     if input.UserInputType == Enum.UserInputType.Keyboard then
         if MovementKeys[input.KeyCode] then
             LastInputTime = tick()
@@ -100,8 +99,7 @@ RunService.Heartbeat:Connect(function()
     if not hrp then return end
     table.insert(PositionHistory, 1, {
         Time = tick(),
-        CFrame = hrp.CFrame,
-        Velocity = hrp.AssemblyLinearVelocity
+        CFrame = hrp.CFrame
     })
     local now = tick()
     for i = #PositionHistory, 1, -1 do
@@ -113,8 +111,7 @@ end)
 
 local function GetPositionSecondsAgo(seconds)
     local targetTime = tick() - seconds
-    local closest = nil
-    local closestDiff = math.huge
+    local closest, closestDiff = nil, math.huge
     for _, data in ipairs(PositionHistory) do
         local diff = math.abs(data.Time - targetTime)
         if diff < closestDiff then
@@ -160,80 +157,120 @@ end
 local PlayerTab = Window:CreateTab("Player", 4483362458)
 
 -- =====================
--- FLY SYSTEM [NORMAL SPEED]
+-- КЛАССИЧЕСКИЙ FLY (BodyVelocity + BodyGyro)
 -- =====================
-PlayerTab:CreateSection("Fly System")
+PlayerTab:CreateSection("Fly")
 
-local FlySpeed = 80
+local FlySpeed = 100
 local FlyConnection = nil
+local FlyBV = nil
+local FlyBG = nil
+
+local function StartFly()
+    local char = GetChar()
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+
+    -- Убираем старые если есть
+    if hrp:FindFirstChild("FlyBV") then hrp:FindFirstChild("FlyBV"):Destroy() end
+    if hrp:FindFirstChild("FlyBG") then hrp:FindFirstChild("FlyBG"):Destroy() end
+
+    -- BodyVelocity — скорость полёта
+    FlyBV = Instance.new("BodyVelocity")
+    FlyBV.Name = "FlyBV"
+    FlyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    FlyBV.Velocity = Vector3.new(0, 0, 0)
+    FlyBV.Parent = hrp
+
+    -- BodyGyro — поворот за камерой
+    FlyBG = Instance.new("BodyGyro")
+    FlyBG.Name = "FlyBG"
+    FlyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    FlyBG.P = 9e4
+    FlyBG.D = 500
+    FlyBG.CFrame = hrp.CFrame
+    FlyBG.Parent = hrp
+
+    -- Главный цикл полёта
+    FlyConnection = RunService.RenderStepped:Connect(function()
+        if not Flying then return end
+
+        local currentChar = LocalPlayer.Character
+        if not currentChar then return end
+        local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
+        if not currentHRP then return end
+
+        local camera = workspace.CurrentCamera
+        local moveDir = Vector3.new(0, 0, 0)
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            moveDir = moveDir + camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            moveDir = moveDir - camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            moveDir = moveDir - camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            moveDir = moveDir + camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            moveDir = moveDir + Vector3.new(0, 1, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            moveDir = moveDir - Vector3.new(0, 1, 0)
+        end
+
+        -- Применяем скорость напрямую
+        if moveDir.Magnitude > 0 then
+            FlyBV.Velocity = moveDir.Unit * FlySpeed
+        else
+            FlyBV.Velocity = Vector3.new(0, 0, 0)
+        end
+
+        -- Поворачиваемся за камерой
+        FlyBG.CFrame = camera.CFrame
+    end)
+end
+
+local function StopFly()
+    if FlyConnection then
+        FlyConnection:Disconnect()
+        FlyConnection = nil
+    end
+
+    local char = LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local bv = hrp:FindFirstChild("FlyBV")
+            local bg = hrp:FindFirstChild("FlyBG")
+            if bv then bv:Destroy() end
+            if bg then bg:Destroy() end
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+    end
+
+    FlyBV = nil
+    FlyBG = nil
+end
 
 PlayerTab:CreateToggle({
     Name = "Fly",
     CurrentValue = false,
-    Flag = "FixedFly",
+    Flag = "Fly",
     Callback = function(Value)
         Flying = Value
-
         if Value then
-            if FlyConnection then FlyConnection:Disconnect() end
-
-            -- Создаём BodyGyro + BodyVelocity для плавного полёта
-            FlyConnection = RunService.RenderStepped:Connect(function(deltaTime)
-                if not Flying then return end
-
-                local currentChar = LocalPlayer.Character
-                if not currentChar then return end
-                local currentHRP = currentChar:FindFirstChild("HumanoidRootPart")
-                if not currentHRP then return end
-                local hum = currentChar:FindFirstChildOfClass("Humanoid")
-
-                local camera = workspace.CurrentCamera
-                local moveDir = Vector3.new(0, 0, 0)
-
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    moveDir = moveDir + camera.CFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    moveDir = moveDir - camera.CFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    moveDir = moveDir - camera.CFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    moveDir = moveDir + camera.CFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                    moveDir = moveDir + Vector3.new(0, 1, 0)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                    moveDir = moveDir - Vector3.new(0, 1, 0)
-                end
-
-                -- НОРМАЛЬНАЯ СКОРОСТЬ через deltaTime
-                if moveDir.Magnitude > 0 then
-                    moveDir = moveDir.Unit * FlySpeed * deltaTime
-                    currentHRP.CFrame = currentHRP.CFrame + moveDir
-                end
-
-                -- Убираем гравитацию
-                currentHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                currentHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-
-                -- Не падаем
-                if hum then
-                    hum:ChangeState(Enum.HumanoidStateType.Flying)
-                end
-            end)
+            StartFly()
         else
-            if FlyConnection then
-                FlyConnection:Disconnect()
-                FlyConnection = nil
-            end
-            -- Возвращаем нормальное состояние
-            local hum = GetHum()
-            if hum then
-                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-            end
+            StopFly()
         end
     end,
 })
@@ -243,82 +280,62 @@ PlayerTab:CreateSlider({
     Range = {10, 500},
     Increment = 10,
     Suffix = " studs/s",
-    CurrentValue = 80,
+    CurrentValue = 100,
     Flag = "FlySpeed",
     Callback = function(Value)
         FlySpeed = Value
     end,
 })
 
+-- Автоматически пересоздаём fly при респавне
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    if Flying then
+        StopFly()
+        task.wait(0.3)
+        StartFly()
+    end
+end)
+
 -- =====================
--- LAG SPEED (Auto Clicker)
+-- LAG SPEED (ПРОСТЫЕ КЛИКИ ЛКМ)
 -- =====================
 PlayerTab:CreateSection("Lag Speed ⚡")
 
 local LagSpeedEnabled = false
 local LagSpeedValue = 100
-local LagSpeedRunning = false
-local IsMouseDown = false
 
--- Отслеживаем нажатие мыши
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        IsMouseDown = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        IsMouseDown = false
-    end
-end)
-
--- Основной цикл Lag Speed
+-- Простой цикл кликов
 task.spawn(function()
-    while true do
-        if LagSpeedEnabled and IsMouseDown then
-            -- Рассчитываем задержку между кликами
-            local delay = 1 / LagSpeedValue
+    while task.wait() do
+        if LagSpeedEnabled then
+            local clicksThisFrame = math.min(LagSpeedValue, 1000) -- Макс 1000 за тик
 
-            -- Симулируем клик
-            pcall(function()
-                -- Метод 1: VirtualInputManager
-                VirtualInputManager:SendMouseButtonEvent(
-                    Mouse.X, Mouse.Y,
-                    0, true, game, 0
-                )
-                task.wait()
-                VirtualInputManager:SendMouseButtonEvent(
-                    Mouse.X, Mouse.Y,
-                    0, false, game, 0
-                )
-            end)
+            for i = 1, clicksThisFrame do
+                -- Простой клик ЛКМ
+                pcall(function()
+                    mouse1click()
+                end)
 
-            -- Также активируем тул если есть
-            pcall(function()
-                local char = LocalPlayer.Character
-                if char then
-                    local tool = char:FindFirstChildOfClass("Tool")
-                    if tool then
-                        tool:Activate()
+                -- Активируем тул если в руке
+                pcall(function()
+                    local char = LocalPlayer.Character
+                    if char then
+                        local tool = char:FindFirstChildOfClass("Tool")
+                        if tool then
+                            tool:Activate()
+                        end
                     end
-                end
-            end)
+                end)
+            end
 
-            -- Также пробуем mouse1click (для эксплоитов)
-            pcall(function()
-                mouse1click()
-            end)
-
-            -- Ждём в зависимости от скорости
+            -- Задержка между пакетами кликов
+            local delay = 1 / (LagSpeedValue / clicksThisFrame)
             if delay < 0.001 then
-                -- Для очень высоких значений - пакетная обработка
                 task.wait()
             else
                 task.wait(delay)
             end
-        else
-            task.wait(0.05) -- Экономим ресурсы когда выключено
         end
     end
 end)
@@ -333,14 +350,55 @@ PlayerTab:CreateToggle({
 })
 
 PlayerTab:CreateSlider({
-    Name = "Grabs Per Second",
+    Name = "Clicks Per Second",
     Range = {1, 100000},
     Increment = 1,
-    Suffix = " /sec",
+    Suffix = " CPS",
     CurrentValue = 100,
-    Flag = "LagSpeedValue",
+    Flag = "LagSpeedCPS",
     Callback = function(Value)
         LagSpeedValue = Value
+    end,
+})
+
+-- =====================
+-- AUTO RESET
+-- =====================
+PlayerTab:CreateSection("Auto Reset")
+
+local AutoResetEnabled = false
+local AutoResetDelay = 1
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if AutoResetEnabled then
+            local hum = GetHum()
+            if hum then
+                hum.Health = 0
+            end
+            task.wait(AutoResetDelay)
+        end
+    end
+end)
+
+PlayerTab:CreateToggle({
+    Name = "Auto Reset",
+    CurrentValue = false,
+    Flag = "AutoReset",
+    Callback = function(Value)
+        AutoResetEnabled = Value
+    end,
+})
+
+PlayerTab:CreateSlider({
+    Name = "Reset Delay",
+    Range = {0, 10},
+    Increment = 1,
+    Suffix = " sec",
+    CurrentValue = 1,
+    Flag = "AutoResetDelay",
+    Callback = function(Value)
+        AutoResetDelay = Value
     end,
 })
 
@@ -354,54 +412,45 @@ local function SetupAntiGrabAnimTracker(char)
     local hum = char:WaitForChild("Humanoid", 10)
     if not hum then return end
     local animator = hum:FindFirstChildOfClass("Animator")
-    if not animator then
-        animator = hum:WaitForChild("Animator", 5)
-    end
+    if not animator then animator = hum:WaitForChild("Animator", 5) end
     if not animator then return end
+
     animator.AnimationPlayed:Connect(function(track)
         if not AntiGrabEnabled then return end
         if Flying or IsTeleporting then return end
-        local timeSinceInput = tick() - LastInputTime
-        if timeSinceInput > 0.15 then
+        if tick() - LastInputTime > 0.15 then
             local animName = ""
             pcall(function()
                 animName = track.Animation and track.Animation.Name or ""
             end)
             local lowerName = string.lower(animName)
-            local safeAnimations = {
-                "idle", "walk", "run", "jump", "fall", "climb",
-                "sit", "swim", "tool", "wave", "point", "dance",
-                "cheer", "laugh", "tilt", "movedirection"
+            local safeAnims = {
+                "idle","walk","run","jump","fall","climb",
+                "sit","swim","tool","wave","point","dance",
+                "cheer","laugh","tilt","movedirection"
             }
             local isSafe = false
-            for _, safeName in ipairs(safeAnimations) do
-                if string.find(lowerName, safeName) then
-                    isSafe = true
-                    break
-                end
+            for _, s in ipairs(safeAnims) do
+                if string.find(lowerName, s) then isSafe = true break end
             end
-            local grabKeywords = {
-                "grab", "hold", "carry", "punch", "stun",
-                "ragdoll", "knock", "sleep", "drag", "pull",
-                "throw", "slam", "choke", "bind", "tie",
-                "capture", "arrest", "cuff", "kill", "eat",
-                "swallow", "consume", "caught", "trapped",
-                "picked", "lifted", "fling", "toss", "crush"
+            local grabWords = {
+                "grab","hold","carry","punch","stun","ragdoll",
+                "knock","sleep","drag","pull","throw","slam",
+                "choke","bind","tie","capture","arrest","cuff",
+                "kill","eat","swallow","consume","caught",
+                "trapped","picked","lifted","fling","toss","crush"
             }
             local isGrab = false
-            for _, keyword in ipairs(grabKeywords) do
-                if string.find(lowerName, keyword) then
-                    isGrab = true
-                    break
-                end
+            for _, g in ipairs(grabWords) do
+                if string.find(lowerName, g) then isGrab = true break end
             end
-            local suspiciousPriority = (
+            local suspPriority = (
                 track.Priority == Enum.AnimationPriority.Action or
                 track.Priority == Enum.AnimationPriority.Action2 or
                 track.Priority == Enum.AnimationPriority.Action3 or
                 track.Priority == Enum.AnimationPriority.Action4
             )
-            if isGrab or (suspiciousPriority and not isSafe) then
+            if isGrab or (suspPriority and not isSafe) then
                 track:Stop(0)
                 TeleportBack(3)
             end
@@ -442,16 +491,12 @@ RunService.Heartbeat:Connect(function()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     local timeSinceInput = tick() - LastInputTime
-    local velocity = hrp.AssemblyLinearVelocity
-    local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-    local fullSpeed = velocity.Magnitude
+    local vel = hrp.AssemblyLinearVelocity
+    local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+    local fSpeed = vel.Magnitude
     local detected = false
-    if horizontalSpeed > 18 and timeSinceInput > 0.1 then
-        detected = true
-    end
-    if fullSpeed > 50 and timeSinceInput > 0.08 then
-        detected = true
-    end
+    if hSpeed > 18 and timeSinceInput > 0.1 then detected = true end
+    if fSpeed > 50 and timeSinceInput > 0.08 then detected = true end
     if detected then
         AntiDetectedCooldown = true
         local success = TeleportBack(7)
@@ -480,7 +525,7 @@ PlayerTab:CreateToggle({
             PositionHistory = {}
             Rayfield:Notify({
                 Title = "🛡️ Anti Detected",
-                Content = "Активировано! Мгновенная реакция.",
+                Content = "Активировано!",
                 Duration = 3,
                 Image = 4483362458
             })
@@ -623,7 +668,6 @@ local function ApplyESPToPlayer(player)
             h.FillColor = ESP_COLOR
             h.OutlineColor = Color3.new(1, 1, 1)
             h.FillTransparency = 0.5
-            h.OutlineTransparency = 0
             h.Parent = character
             local head = character:FindFirstChild("Head")
             if head and not head:FindFirstChild("ESP_Name") then
@@ -666,9 +710,7 @@ end
 
 RunService.RenderStepped:Connect(function()
     if not ESP_ENABLED then return end
-    local myChar = LocalPlayer.Character
-    if not myChar then return end
-    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not myHRP then return end
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
@@ -676,12 +718,11 @@ RunService.RenderStepped:Connect(function()
             if head then
                 local bb = head:FindFirstChild("ESP_Name")
                 if bb then
-                    local distLabel = bb:FindFirstChild("DistLabel")
-                    if distLabel then
-                        local theirHRP = player.Character:FindFirstChild("HumanoidRootPart")
-                        if theirHRP then
-                            local d = math.floor((myHRP.Position - theirHRP.Position).Magnitude)
-                            distLabel.Text = "["..d.."m]"
+                    local dl = bb:FindFirstChild("DistLabel")
+                    if dl then
+                        local tHRP = player.Character:FindFirstChild("HumanoidRootPart")
+                        if tHRP then
+                            dl.Text = "["..math.floor((myHRP.Position - tHRP.Position).Magnitude).."m]"
                         end
                     end
                 end
@@ -696,15 +737,13 @@ ESPTab:CreateToggle({
     Flag = "ESP",
     Callback = function(Value)
         ESP_ENABLED = Value
-        for _, player in pairs(Players:GetPlayers()) do
-            ApplyESPToPlayer(player)
-        end
+        for _, p in pairs(Players:GetPlayers()) do ApplyESPToPlayer(p) end
         if not Value then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Character then
-                    local h = player.Character:FindFirstChild("ESP_Highlight")
+            for _, p in pairs(Players:GetPlayers()) do
+                if p.Character then
+                    local h = p.Character:FindFirstChild("ESP_Highlight")
                     if h then h:Destroy() end
-                    local head = player.Character:FindFirstChild("Head")
+                    local head = p.Character:FindFirstChild("Head")
                     if head then
                         local bb = head:FindFirstChild("ESP_Name")
                         if bb then bb:Destroy() end
@@ -715,8 +754,8 @@ ESPTab:CreateToggle({
     end,
 })
 
-Players.PlayerAdded:Connect(function(player)
-    if ESP_ENABLED then ApplyESPToPlayer(player) end
+Players.PlayerAdded:Connect(function(p)
+    if ESP_ENABLED then ApplyESPToPlayer(p) end
 end)
 
 ESPTab:CreateColorPicker({
@@ -726,9 +765,9 @@ ESPTab:CreateColorPicker({
     Callback = function(Value)
         ESP_COLOR = Value
         if ESP_ENABLED then
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Character then
-                    local h = player.Character:FindFirstChild("ESP_Highlight")
+            for _, p in pairs(Players:GetPlayers()) do
+                if p.Character then
+                    local h = p.Character:FindFirstChild("ESP_Highlight")
                     if h then h.FillColor = Value end
                 end
             end
@@ -747,9 +786,7 @@ TPTab:CreateToggle({
     Name = "Click TP (Ctrl + Click)",
     CurrentValue = false,
     Flag = "ClickTP",
-    Callback = function(Value)
-        ClickTP = Value
-    end,
+    Callback = function(Value) ClickTP = Value end,
 })
 
 Mouse.Button1Down:Connect(function()
@@ -759,59 +796,50 @@ Mouse.Button1Down:Connect(function()
         if hrp and Mouse.Hit then
             hrp.CFrame = CFrame.new(Mouse.Hit.Position + Vector3.new(0, 3, 0))
         end
-        task.defer(function()
-            task.wait(0.5)
-            IsTeleporting = false
-        end)
+        task.defer(function() task.wait(0.5) IsTeleporting = false end)
     end
 end)
 
 TPTab:CreateSection("Teleport to Player")
 
 local SelectedTPPlayer = nil
-local PlayerList = {}
+local PList = {}
 for _, p in pairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then table.insert(PlayerList, p.Name) end
+    if p ~= LocalPlayer then table.insert(PList, p.Name) end
 end
 
-local TPDropdown = TPTab:CreateDropdown({
+local TPDrop = TPTab:CreateDropdown({
     Name = "Select Player",
-    Options = PlayerList,
+    Options = PList,
     CurrentOption = "",
-    Flag = "TPPlayerSelect",
-    Callback = function(Option)
-        SelectedTPPlayer = Option
-    end,
+    Flag = "TPSelect",
+    Callback = function(Option) SelectedTPPlayer = Option end,
 })
 
-local function RefreshPlayerList()
-    local names = {}
+local function RefreshPList()
+    local n = {}
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then table.insert(names, p.Name) end
+        if p ~= LocalPlayer then table.insert(n, p.Name) end
     end
-    pcall(function() TPDropdown:Refresh(names, true) end)
+    pcall(function() TPDrop:Refresh(n, true) end)
 end
-
-Players.PlayerAdded:Connect(RefreshPlayerList)
-Players.PlayerRemoving:Connect(RefreshPlayerList)
+Players.PlayerAdded:Connect(RefreshPList)
+Players.PlayerRemoving:Connect(RefreshPList)
 
 TPTab:CreateButton({
-    Name = "Teleport to Selected Player",
+    Name = "Teleport to Player",
     Callback = function()
         if SelectedTPPlayer then
             IsTeleporting = true
-            local target = Players:FindFirstChild(SelectedTPPlayer)
-            if target and target.Character then
-                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+            local t = Players:FindFirstChild(SelectedTPPlayer)
+            if t and t.Character then
+                local tHRP = t.Character:FindFirstChild("HumanoidRootPart")
                 local myHRP = GetHRP()
-                if targetHRP and myHRP then
-                    myHRP.CFrame = targetHRP.CFrame + Vector3.new(3, 0, 0)
+                if tHRP and myHRP then
+                    myHRP.CFrame = tHRP.CFrame + Vector3.new(3, 0, 0)
                 end
             end
-            task.defer(function()
-                task.wait(0.5)
-                IsTeleporting = false
-            end)
+            task.defer(function() task.wait(0.5) IsTeleporting = false end)
         end
     end,
 })
@@ -833,17 +861,18 @@ SettingsTab:CreateButton({
     Name = "Destroy GUI",
     Callback = function()
         Flying = false
+        StopFly()
         AntiGrabEnabled = false
         AntiDetectedEnabled = false
         LagSpeedEnabled = false
-        if FlyConnection then FlyConnection:Disconnect() end
+        AutoResetEnabled = false
         Rayfield:Destroy()
     end,
 })
 
 SettingsTab:CreateParagraph({
-    Title = "🔥 GGOG HUB",
-    Content = "Modded by: Magfun_legend\n\nFly = WASD + Space/Shift\nLag Speed = Удерживай ЛКМ\nAnti-Grab 🔴OP = Анимации (3 сек)\nAnti Detected = Перемещение (7 сек)"
+    Title = "🔥 GGOG HUB v3.1",
+    Content = "Modded by: Magfun_legend\n\nFly = WASD + Space/Shift (BodyVelocity)\nLag Speed = Toggle + ЛКМ = клики\nAuto Reset = Авто ресет персонажа"
 })
 
-SettingsTab:CreateLabel("Version 3.0 | Lag Speed + Fixed Fly")
+SettingsTab:CreateLabel("Version 3.1 | Classic Fly + Lag Speed")
