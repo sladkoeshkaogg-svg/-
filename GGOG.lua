@@ -1,6 +1,7 @@
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║              DMM HUB — Fling Things and People          ║
--- ║           + ⭐ L.egend OP (Anti-Grab & Anti-Detected)     ║
+-- ║           + ⭐ Legend OP (Anti-Grab & Anti-Detected)     ║
+-- ║              🔧 PROTECTED BUILD — Anti Script Break     ║
 -- ║                Built on Rayfield Interface               ║
 -- ╚══════════════════════════════════════════════════════════╝
 
@@ -103,11 +104,34 @@ local TweenService       = game:GetService("TweenService")
 local Debris             = game:GetService("Debris")
 local Lighting           = game:GetService("Lighting")
 
-local LocalPlayer      = Players.LocalPlayer
-local Character        = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid         = Character:WaitForChild("Humanoid")
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-local Mouse            = LocalPlayer:GetMouse()
+local LocalPlayer = Players.LocalPlayer
+local Mouse       = LocalPlayer:GetMouse()
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  🔧 PROTECTED GETTERS — НЕ ЛОМАЮТСЯ ОТ ДРУГИХ СКРИПТОВ ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+local function getChar()
+    return LocalPlayer and LocalPlayer.Character
+end
+
+local function getHum()
+    local char = getChar()
+    if not char then return nil end
+    return char:FindFirstChildOfClass("Humanoid")
+end
+
+local function getHRP()
+    local char = getChar()
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+local function isAlive()
+    local hum = getHum()
+    local hrp = getHRP()
+    return hum and hrp and hum.Health > 0 and hrp.Parent ~= nil
+end
 
 -- ═══════ ПЕРЕМЕННЫЕ ═══════
 local Settings = {
@@ -167,9 +191,10 @@ local AntiGrabEnabled      = false
 local AntiDetectedEnabled  = false
 local AntiDetectedCooldown = false
 local AntiAllHacksEnabled     = false
-local AntiAllHacksConnections = {}  -- ★ ТАБЛИЦА для всех соединений
-local LoopResetEnabled        = false  -- ★ НОВАЯ ПЕРЕМЕННАЯ
+local AntiAllHacksConnections = {}
+local LoopResetEnabled        = false
 local SAFE_POSITION           = CFrame.new(322.31, 9.52, 489.68)
+local _dmmHubAlive            = true
 
 local MovementKeys = {
     [Enum.KeyCode.W] = true, [Enum.KeyCode.A] = true,
@@ -184,69 +209,20 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- ═══════ ЗАПИСЬ ИСТОРИИ ПОЗИЦИЙ ═══════
-RunService.Heartbeat:Connect(function()
-    if not AntiGrabEnabled and not AntiDetectedEnabled then
-        PositionHistory = {}
-        return
-    end
-    if Flying or IsTeleporting then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    table.insert(PositionHistory, 1, {
-        Time = tick(), CFrame = hrp.CFrame, Velocity = hrp.AssemblyLinearVelocity
-    })
-    local now = tick()
-    for i = #PositionHistory, 1, -1 do
-        if now - PositionHistory[i].Time > 8.5 then
-            table.remove(PositionHistory, i)
-        end
-    end
-end)
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  🔧 АВТО-РЕФРЕШ — ПЕРЕПОДКЛЮЧАЕТ ВСЁ КАЖДЫЕ 2 СЕК     ║
+-- ╚══════════════════════════════════════════════════════════╝
 
-local function GetPositionSecondsAgo(seconds)
-    local targetTime = tick() - seconds
-    local closest, closestDiff = nil, math.huge
-    for _, data in ipairs(PositionHistory) do
-        local diff = math.abs(data.Time - targetTime)
-        if diff < closestDiff then closestDiff = diff; closest = data end
-    end
-    if not closest and #PositionHistory > 0 then
-        closest = PositionHistory[#PositionHistory]
-    end
-    return closest
-end
+local _lastTrackedChar = nil
+local _antiGrabTrackerSetup = false
 
-local function TeleportBack(seconds)
-    if not HumanoidRootPart or not HumanoidRootPart.Parent then return false end
-    local safeData = GetPositionSecondsAgo(seconds)
-    if safeData then
-        IsTeleporting = true
-        HumanoidRootPart.CFrame = safeData.CFrame
-        HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        pcall(function()
-            local animator = Humanoid:FindFirstChildOfClass("Animator")
-            if animator then
-                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-                    track:Stop(0)
-                end
-            end
-        end)
-        task.defer(function() task.wait(0.4); IsTeleporting = false end)
-        return true
-    end
-    return false
-end
-
--- ═══════ ANTI-GRAB ТРЕКЕР ═══════
 local function SetupAntiGrabAnimTracker(char)
     if not char then return end
-    local hum = char:WaitForChild("Humanoid", 10)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then hum = char:WaitForChild("Humanoid", 5) end
     if not hum then return end
     local animator = hum:FindFirstChildOfClass("Animator")
-    if not animator then animator = hum:WaitForChild("Animator", 5) end
+    if not animator then animator = hum:WaitForChild("Animator", 3) end
     if not animator then return end
     animator.AnimationPlayed:Connect(function(track)
         if not AntiGrabEnabled then return end
@@ -289,48 +265,124 @@ local function SetupAntiGrabAnimTracker(char)
     end)
 end
 
--- ═══════ ANTI-DETECTED HEARTBEAT ═══════
-RunService.Heartbeat:Connect(function()
-    if not AntiDetectedEnabled then return end
-    if Flying or IsTeleporting or AntiDetectedCooldown then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local timeSinceInput  = tick() - LastInputTime
-    local velocity        = hrp.AssemblyLinearVelocity
-    local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-    local fullSpeed       = velocity.Magnitude
-    local detected = false
-    if horizontalSpeed > 18 and timeSinceInput > 0.1 then detected = true end
-    if fullSpeed > 50 and timeSinceInput > 0.08 then detected = true end
-    if detected then
-        AntiDetectedCooldown = true
-        local success = TeleportBack(7)
-        if success then
-            Rayfield:Notify({
-                Title = "🛡️ Anti Detected [BETA]",
-                Content = "⚡ Принудительное перемещение!\nВозврат на 7 секунд назад.",
-                Duration = 3, Image = 4483362458
-            })
-        end
-        task.defer(function() task.wait(0.5); AntiDetectedCooldown = false end)
+-- 🔧 АВТО-РЕФРЕШ: проверяет и переподключает трекер
+task.spawn(function()
+    while _dmmHubAlive do
+        task.wait(2)
+        pcall(function()
+            local char = getChar()
+            if char and char ~= _lastTrackedChar then
+                _lastTrackedChar = char
+                task.wait(0.5)
+                SetupAntiGrabAnimTracker(char)
+            end
+        end)
     end
 end)
 
--- ═══════ ОБНОВЛЕНИЕ ПЕРСОНАЖА ═══════
+-- Первичная установка
 LocalPlayer.CharacterAdded:Connect(function(char)
-    Character        = char
-    Humanoid         = char:WaitForChild("Humanoid")
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
     task.wait(0.3)
+    _lastTrackedChar = char
     SetupAntiGrabAnimTracker(char)
 end)
-if LocalPlayer.Character then
-    SetupAntiGrabAnimTracker(LocalPlayer.Character)
+if getChar() then
+    _lastTrackedChar = getChar()
+    SetupAntiGrabAnimTracker(getChar())
 end
 
--- ═══════ УТИЛИТЫ ═══════
+-- ═══════ ЗАПИСЬ ИСТОРИИ ПОЗИЦИЙ ═══════
+RunService.Heartbeat:Connect(function()
+    if not _dmmHubAlive then return end
+    if not AntiGrabEnabled and not AntiDetectedEnabled then
+        PositionHistory = {}
+        return
+    end
+    if Flying or IsTeleporting then return end
+    local hrp = getHRP()
+    if not hrp then return end
+    pcall(function()
+        table.insert(PositionHistory, 1, {
+            Time = tick(), CFrame = hrp.CFrame, Velocity = hrp.AssemblyLinearVelocity
+        })
+        local now = tick()
+        for i = #PositionHistory, 1, -1 do
+            if now - PositionHistory[i].Time > 8.5 then
+                table.remove(PositionHistory, i)
+            end
+        end
+    end)
+end)
+
+local function GetPositionSecondsAgo(seconds)
+    local targetTime = tick() - seconds
+    local closest, closestDiff = nil, math.huge
+    for _, data in ipairs(PositionHistory) do
+        local diff = math.abs(data.Time - targetTime)
+        if diff < closestDiff then closestDiff = diff; closest = data end
+    end
+    if not closest and #PositionHistory > 0 then
+        closest = PositionHistory[#PositionHistory]
+    end
+    return closest
+end
+
+function TeleportBack(seconds)
+    local hrp = getHRP()
+    if not hrp or not hrp.Parent then return false end
+    local safeData = GetPositionSecondsAgo(seconds)
+    if safeData then
+        IsTeleporting = true
+        hrp.CFrame = safeData.CFrame
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        pcall(function()
+            local hum = getHum()
+            if hum then
+                local animator = hum:FindFirstChildOfClass("Animator")
+                if animator then
+                    for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                        track:Stop(0)
+                    end
+                end
+            end
+        end)
+        task.defer(function() task.wait(0.4); IsTeleporting = false end)
+        return true
+    end
+    return false
+end
+
+-- ═══════ ANTI-DETECTED HEARTBEAT ═══════
+RunService.Heartbeat:Connect(function()
+    if not _dmmHubAlive then return end
+    if not AntiDetectedEnabled then return end
+    if Flying or IsTeleporting or AntiDetectedCooldown then return end
+    local hrp = getHRP()
+    if not hrp then return end
+    pcall(function()
+        local timeSinceInput  = tick() - LastInputTime
+        local velocity        = hrp.AssemblyLinearVelocity
+        local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+        local fullSpeed       = velocity.Magnitude
+        local detected = false
+        if horizontalSpeed > 18 and timeSinceInput > 0.1 then detected = true end
+        if fullSpeed > 50 and timeSinceInput > 0.08 then detected = true end
+        if detected then
+            AntiDetectedCooldown = true
+            local success = TeleportBack(7)
+            if success then
+                Rayfield:Notify({
+                    Title = "🛡️ Anti Detected [BETA]",
+                    Content = "⚡ Принудительное перемещение!\nВозврат на 7 секунд назад.",
+                    Duration = 3, Image = 4483362458
+                })
+            end
+            task.defer(function() task.wait(0.5); AntiDetectedCooldown = false end)
+        end
+    end)
+end)
+
+-- ═══════ УТИЛИТЫ (ВСЕ ИСПОЛЬЗУЮТ ГЕТТЕРЫ) ═══════
 local function getPlayerList()
     local list = {}
     for _, p in pairs(Players:GetPlayers()) do
@@ -341,9 +393,11 @@ end
 
 local function getClosestPlayer(range)
     local closest, dist = nil, range or math.huge
+    local hrp = getHRP()
+    if not hrp then return nil end
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local d = (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+            local d = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
             if d < dist then closest = p; dist = d end
         end
     end
@@ -399,9 +453,10 @@ end
 local function flingPlayer(target)
     pcall(function()
         if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = getHRP(); if not hrp then return end
             local tHRP = target.Character.HumanoidRootPart
-            local direction = (tHRP.Position - HumanoidRootPart.Position).Unit
-            HumanoidRootPart.CFrame = tHRP.CFrame + direction * 2
+            local direction = (tHRP.Position - hrp.Position).Unit
+            hrp.CFrame = tHRP.CFrame + direction * 2
             applyVelocity(tHRP, Vector3.new(math.random(-1,1), 1, math.random(-1,1)), FlingPower)
         end
     end)
@@ -421,8 +476,9 @@ local function h_alive(p)
 end
 
 local function h_dist(p)
-    if h_alive(p) and HumanoidRootPart then
-        return (HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+    local hrp = getHRP()
+    if h_alive(p) and hrp then
+        return (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
     end
     return math.huge
 end
@@ -466,10 +522,12 @@ end
 
 local function h_sitOnBlob(blob)
     local seat = h_getBlobSeat(blob)
-    if seat and HumanoidRootPart then
-        HumanoidRootPart.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
+    local hrp = getHRP()
+    local hum = getHum()
+    if seat and hrp and hum then
+        hrp.CFrame = seat.CFrame + Vector3.new(0, 2, 0)
         task.wait(0.1)
-        if seat:IsA("Seat") or seat:IsA("VehicleSeat") then seat:Sit(Humanoid) end
+        if seat:IsA("Seat") or seat:IsA("VehicleSeat") then seat:Sit(hum) end
     end
 end
 
@@ -516,16 +574,17 @@ end
 local function h_flingPlayer(target)
     pcall(function()
         if not h_alive(target) then return end
+        local hrp = getHRP(); if not hrp then return end
         local tHRP = target.Character.HumanoidRootPart
-        local oldCF = HumanoidRootPart.CFrame
-        HumanoidRootPart.CFrame = tHRP.CFrame * CFrame.new(0, 0, -1)
+        local oldCF = hrp.CFrame
+        hrp.CFrame = tHRP.CFrame * CFrame.new(0, 0, -1)
         local bav = Instance.new("BodyAngularVelocity")
         bav.AngularVelocity = Vector3.new(0, HS.FlingPower, 0)
         bav.MaxTorque = Vector3.new(1e9,1e9,1e9)
-        bav.Parent = HumanoidRootPart
+        bav.Parent = hrp
         Debris:AddItem(bav, 0.3)
         task.wait(0.3)
-        HumanoidRootPart.CFrame = oldCF
+        hrp.CFrame = oldCF
     end)
 end
 
@@ -566,35 +625,29 @@ local function h_applyGrabEffect(target, effectType)
 end
 
 -- ═══════════════════════════════════════
--- ★★★ ТЁМНО-БЕЛАЯ ТЕМА ★★★
+-- ★ ТЁМНО-БЕЛАЯ ТЕМА ★
 -- ═══════════════════════════════════════
 local DarkWhiteTheme = {
     TextFont = "Default",
     TextColor = Color3.fromRGB(230, 230, 235),
-
     Background = Color3.fromRGB(18, 18, 22),
     Topbar = Color3.fromRGB(28, 28, 33),
     Shadow = Color3.fromRGB(8, 8, 12),
-
     NotificationBackground = Color3.fromRGB(22, 22, 27),
     NotificationActionsBackground = Color3.fromRGB(200, 200, 210),
-
     TabBackground = Color3.fromRGB(35, 35, 40),
     TabStroke = Color3.fromRGB(55, 55, 60),
     TabBackgroundSelected = Color3.fromRGB(215, 215, 225),
     TabTextColor = Color3.fromRGB(195, 195, 200),
     SelectedTabTextColor = Color3.fromRGB(18, 18, 22),
-
     ElementBackground = Color3.fromRGB(28, 28, 33),
     ElementBackgroundHover = Color3.fromRGB(38, 38, 43),
     SecondaryElementBackground = Color3.fromRGB(22, 22, 27),
     ElementStroke = Color3.fromRGB(50, 50, 58),
     SecondaryElementStroke = Color3.fromRGB(40, 40, 48),
-
     SliderBackground = Color3.fromRGB(35, 35, 40),
     SliderProgress = Color3.fromRGB(210, 210, 220),
     SliderStroke = Color3.fromRGB(48, 48, 55),
-
     ToggleBackground = Color3.fromRGB(30, 30, 35),
     ToggleEnabled = Color3.fromRGB(220, 220, 230),
     ToggleDisabled = Color3.fromRGB(70, 70, 78),
@@ -602,21 +655,20 @@ local DarkWhiteTheme = {
     ToggleDisabledStroke = Color3.fromRGB(85, 85, 92),
     ToggleEnabledOuterStroke = Color3.fromRGB(110, 110, 118),
     ToggleDisabledOuterStroke = Color3.fromRGB(60, 60, 68),
-
     InputBackground = Color3.fromRGB(25, 25, 30),
     InputStroke = Color3.fromRGB(48, 48, 55),
     PlaceholderColor = Color3.fromRGB(160, 160, 168),
 }
 
 -- ═══════════════════════════════════════
--- ОКНО  ★ С ТЁМНО-БЕЛОЙ ТЕМОЙ ★
+-- ОКНО
 -- ═══════════════════════════════════════
 local Window = Rayfield:CreateWindow({
     Name = "💀 DMM HUB — FTAP",
     Icon = 0,
     LoadingTitle = "DMM HUB",
     LoadingSubtitle = "Fling Things and People",
-    Theme = DarkWhiteTheme,          -- ★ ТЁМНО-БЕЛАЯ ТЕМА
+    Theme = DarkWhiteTheme,
     DisableRayfieldPrompts = true,
     DisableBuildWarnings = true,
     ConfigurationSaving = {
@@ -676,85 +728,49 @@ LegendTab:CreateSection("💛 Anti All Hacks v6.9")
 
 LegendTab:CreateParagraph({
     Title = "⭐ Anti All Hacks v6.9 Info",
-    Content = "10x ТП КАЖДЫЙ КАДР на безопасную позицию.\nX:322.31 Y:9.52 Z:489.68\n3 потока: RenderStepped + Heartbeat + Stepped\nМАКСИМАЛЬНАЯ скорость телепорта."
+    Content = "10x ТП КАЖДЫЙ КАДР на безопасную позицию.\nX:322.31 Y:9.52 Z:489.68\n3 потока: RenderStepped + Heartbeat + Stepped"
 })
 
--- ★★★ ОБНОВЛЁННЫЙ Anti All Hacks — 10x ТП × 3 RunService потока ★★★
 LegendTab:CreateToggle({
     Name = "Anti All Hacks v6.9 ⚡ULTRA 10x",
     CurrentValue = false, Flag = "LegendAntiAllHacks",
     Callback = function(Value)
         AntiAllHacksEnabled = Value
         if Value then
-            -- Очистка старых соединений
-            for _, conn in pairs(AntiAllHacksConnections) do
-                pcall(function() conn:Disconnect() end)
-            end
+            for _, conn in pairs(AntiAllHacksConnections) do pcall(function() conn:Disconnect() end) end
             AntiAllHacksConnections = {}
-
-            -- ★ Общая функция — 10 ТП за вызов
             local function forceTP()
                 if not AntiAllHacksEnabled then return end
-                local char = LocalPlayer.Character
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local hrp = getHRP()
                 if not hrp then return end
                 for _i = 1, 10 do
                     hrp.CFrame = SAFE_POSITION
                     hrp.AssemblyLinearVelocity  = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
                 end
-                -- Убиваем любые навязанные силы
                 for _, child in pairs(hrp:GetChildren()) do
-                    if child:IsA("BodyVelocity") or child:IsA("BodyForce")
-                    or child:IsA("BodyThrust") or child:IsA("BodyAngularVelocity")
-                    or child:IsA("BodyPosition") or child:IsA("BodyGyro")
-                    or child:IsA("LinearVelocity") or child:IsA("VectorForce") then
-                        child:Destroy()
-                    end
+                    if child:IsA("BodyVelocity") or child:IsA("BodyForce") or child:IsA("BodyThrust")
+                    or child:IsA("BodyAngularVelocity") or child:IsA("BodyPosition") or child:IsA("BodyGyro")
+                    or child:IsA("LinearVelocity") or child:IsA("VectorForce") then child:Destroy() end
                 end
             end
-
-            -- ★ Поток 1 — RenderStepped (перед рендером, самый быстрый)
-            table.insert(AntiAllHacksConnections,
-                RunService.RenderStepped:Connect(forceTP)
-            )
-
-            -- ★ Поток 2 — Heartbeat (после физики)
-            table.insert(AntiAllHacksConnections,
-                RunService.Heartbeat:Connect(forceTP)
-            )
-
-            -- ★ Поток 3 — Stepped (перед физикой)
-            table.insert(AntiAllHacksConnections,
-                RunService.Stepped:Connect(function() forceTP() end)
-            )
-
-            Rayfield:Notify({
-                Title = "⭐ Legend OP",
-                Content = "Anti All Hacks v6.9 ⚡ULTRA\n10x ТП × 3 потока = 30 ТП/кадр!\n→ X:322 Y:9.5 Z:489",
-                Duration = 4, Image = 4483362458
-            })
+            table.insert(AntiAllHacksConnections, RunService.RenderStepped:Connect(forceTP))
+            table.insert(AntiAllHacksConnections, RunService.Heartbeat:Connect(forceTP))
+            table.insert(AntiAllHacksConnections, RunService.Stepped:Connect(function() forceTP() end))
+            Rayfield:Notify({Title="⭐ Legend OP", Content="Anti All Hacks v6.9 ⚡ULTRA\n10x ТП × 3 потока!", Duration=4, Image=4483362458})
         else
-            for _, conn in pairs(AntiAllHacksConnections) do
-                pcall(function() conn:Disconnect() end)
-            end
+            for _, conn in pairs(AntiAllHacksConnections) do pcall(function() conn:Disconnect() end) end
             AntiAllHacksConnections = {}
-            Rayfield:Notify({
-                Title = "⭐ Legend OP",
-                Content = "Anti All Hacks v6.9 выключен.",
-                Duration = 2, Image = 4483362458
-            })
+            Rayfield:Notify({Title="⭐ Legend OP", Content="Anti All Hacks v6.9 выключен.", Duration=2, Image=4483362458})
         end
     end,
 })
 
--- ★★★ НОВЫЙ: LOOP RESET ★★★
 LegendTab:CreateSection("💛 Loop Reset ⚡")
 
 LegendTab:CreateParagraph({
     Title = "⭐ Loop Reset Info",
-    Content = "Ультра-быстрый ресет персонажа.\nМгновенная смерть каждый цикл.\nПерсонаж респавнится и снова умирает."
+    Content = "Ультра-быстрый ресет персонажа.\nМгновенная смерть → респавн → снова."
 })
 
 LegendTab:CreateToggle({
@@ -763,48 +779,25 @@ LegendTab:CreateToggle({
     Callback = function(Value)
         LoopResetEnabled = Value
         if Value then
-            Rayfield:Notify({
-                Title = "⭐ Legend OP",
-                Content = "Loop Reset АКТИВИРОВАН!\n⚡ Ультра-быстрый ресет.",
-                Duration = 3, Image = 4483362458
-            })
+            Rayfield:Notify({Title="⭐ Legend OP", Content="Loop Reset АКТИВИРОВАН!", Duration=3, Image=4483362458})
             task.spawn(function()
                 while LoopResetEnabled do
                     pcall(function()
-                        local char = LocalPlayer.Character
-                        if char then
-                            local hum = char:FindFirstChildOfClass("Humanoid")
-                            if hum and hum.Health > 0 then
-                                hum.Health = 0
-                            end
-                        end
+                        local hum = getHum()
+                        if hum and hum.Health > 0 then hum.Health = 0 end
                     end)
-                    -- Ждём респавна
                     if LoopResetEnabled then
-                        local newChar = LocalPlayer.Character
-                        if newChar then
-                            local newHum = newChar:FindFirstChildOfClass("Humanoid")
-                            if newHum and newHum.Health <= 0 then
-                                -- Ждём пока персонаж жив (респавн)
-                                local waited = 0
-                                repeat
-                                    task.wait(0.05)
-                                    waited = waited + 0.05
-                                    newChar = LocalPlayer.Character
-                                    newHum = newChar and newChar:FindFirstChildOfClass("Humanoid")
-                                until (newHum and newHum.Health > 0) or waited > 10 or not LoopResetEnabled
-                            end
-                        end
-                        task.wait(0.05) -- минимальная задержка
+                        local waited = 0
+                        repeat
+                            task.wait(0.05); waited = waited + 0.05
+                            local hum = getHum()
+                        until (hum and hum.Health > 0) or waited > 10 or not LoopResetEnabled
+                        task.wait(0.05)
                     end
                 end
             end)
         else
-            Rayfield:Notify({
-                Title = "⭐ Legend OP",
-                Content = "Loop Reset выключен.",
-                Duration = 2, Image = 4483362458
-            })
+            Rayfield:Notify({Title="⭐ Legend OP", Content="Loop Reset выключен.", Duration=2, Image=4483362458})
         end
     end,
 })
@@ -816,133 +809,68 @@ local HomeTab = Window:CreateTab("🏠 Home", 0)
 
 HomeTab:CreateSection("🦠 Blobman Controls")
 
-HomeTab:CreateButton({
-    Name = "🟢 Sit On Blobman",
-    Callback = function()
-        local blob = getBlobman()
-        if blob then h_sitOnBlob(blob); Rayfield:Notify({Title="DMM",Content="Mounted Blobman!",Duration=2})
-        else Rayfield:Notify({Title="DMM",Content="No Blobman found!",Duration=2}) end
-    end,
-})
+HomeTab:CreateButton({Name="🟢 Sit On Blobman", Callback=function()
+    local blob = getBlobman()
+    if blob then h_sitOnBlob(blob); Rayfield:Notify({Title="DMM",Content="Mounted Blobman!",Duration=2})
+    else Rayfield:Notify({Title="DMM",Content="No Blobman found!",Duration=2}) end
+end})
 
-HomeTab:CreateButton({
-    Name = "🆓 Blobman Free (Spawn)",
-    Callback = function()
-        pcall(function()
-            for _, r in pairs(ReplicatedStorage:GetDescendants()) do
-                if r:IsA("RemoteEvent") then
-                    pcall(function() r:FireServer("BlobMan") end)
-                    pcall(function() r:FireServer("Blobman") end)
-                    pcall(function() r:FireServer("Buy", "BlobMan") end)
-                    pcall(function() r:FireServer("buy", "Blobman") end)
-                    pcall(function() r:FireServer("Purchase", "BlobMan") end)
-                end
+HomeTab:CreateButton({Name="🆓 Blobman Free (Spawn)", Callback=function()
+    pcall(function()
+        for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+            if r:IsA("RemoteEvent") then
+                pcall(function() r:FireServer("BlobMan") end)
+                pcall(function() r:FireServer("Blobman") end)
+                pcall(function() r:FireServer("Buy", "BlobMan") end)
+                pcall(function() r:FireServer("buy", "Blobman") end)
+                pcall(function() r:FireServer("Purchase", "BlobMan") end)
             end
-        end)
-        Rayfield:Notify({Title="DMM",Content="Attempted spawn Blobman!",Duration=2})
-    end,
-})
+        end
+    end)
+    Rayfield:Notify({Title="DMM",Content="Attempted spawn Blobman!",Duration=2})
+end})
 
-HomeTab:CreateToggle({
-    Name = "❄️ Freeze Blobman", CurrentValue = false, Flag = "H_BlobFreeze",
-    Callback = function(V)
-        HS.BlobFreeze = V
-        task.spawn(function()
-            while HS.BlobFreeze do task.wait(0.1)
-                pcall(function()
-                    local blob = getBlobman()
-                    if blob then for _, p in pairs(blob:GetDescendants()) do if p:IsA("BasePart") then p.Anchored = true end end end
-                end)
-            end
-            pcall(function()
-                local blob = getBlobman()
-                if blob then for _, p in pairs(blob:GetDescendants()) do if p:IsA("BasePart") then p.Anchored = false end end end
-            end)
-        end)
-    end,
-})
+HomeTab:CreateToggle({Name="❄️ Freeze Blobman", CurrentValue=false, Flag="H_BlobFreeze",
+    Callback=function(V) HS.BlobFreeze=V; task.spawn(function()
+        while HS.BlobFreeze do task.wait(0.1); pcall(function() local blob=getBlobman()
+            if blob then for _, p in pairs(blob:GetDescendants()) do if p:IsA("BasePart") then p.Anchored=true end end end end) end
+        pcall(function() local blob=getBlobman(); if blob then for _, p in pairs(blob:GetDescendants()) do if p:IsA("BasePart") then p.Anchored=false end end end end)
+    end) end})
 
 HomeTab:CreateSection("🦠 Blobman Loop Grab")
 
-HomeTab:CreateToggle({
-    Name = "🔄 Loop Grab ALL Players", CurrentValue = false, Flag = "H_BlobGrabAll",
-    Callback = function(V)
-        HS.BlobLoopGrabAll = V
-        task.spawn(function()
-            while HS.BlobLoopGrabAll do task.wait(0.15)
-                pcall(function()
-                    local blob = getBlobman()
-                    if blob then
-                        for _, p in pairs(Players:GetPlayers()) do
-                            if p ~= LocalPlayer and h_alive(p) then h_blobGrabPlayer(blob, p) end
-                        end
-                    end
-                end)
-            end
-        end)
-    end,
-})
+HomeTab:CreateToggle({Name="🔄 Loop Grab ALL Players", CurrentValue=false, Flag="H_BlobGrabAll",
+    Callback=function(V) HS.BlobLoopGrabAll=V; task.spawn(function()
+        while HS.BlobLoopGrabAll do task.wait(0.15); pcall(function() local blob=getBlobman()
+            if blob then for _, p in pairs(Players:GetPlayers()) do if p~=LocalPlayer and h_alive(p) then h_blobGrabPlayer(blob, p) end end end end) end
+    end) end})
 
-HomeTab:CreateDropdown({
-    Name = "Select Player (Blob Grab)", Options = getPlayerList(), CurrentOption = {},
-    MultiOption = false, Flag = "H_BlobGrabTarget",
-    Callback = function(Opt) HSelPlayerName = Opt; HSelPlayer = Players:FindFirstChild(Opt) end,
-})
+HomeTab:CreateDropdown({Name="Select Player (Blob Grab)", Options=getPlayerList(), CurrentOption={}, MultiOption=false, Flag="H_BlobGrabTarget",
+    Callback=function(Opt) HSelPlayerName=Opt; HSelPlayer=Players:FindFirstChild(Opt) end})
 
-HomeTab:CreateToggle({
-    Name = "🔄 Loop Grab Selected Player", CurrentValue = false, Flag = "H_BlobGrabSel",
-    Callback = function(V)
-        HS.BlobLoopGrabPlayer = V
-        task.spawn(function()
-            while HS.BlobLoopGrabPlayer do task.wait(0.15)
-                pcall(function() local blob = getBlobman(); if blob and h_alive(HSelPlayer) then h_blobGrabPlayer(blob, HSelPlayer) end end)
-            end
-        end)
-    end,
-})
+HomeTab:CreateToggle({Name="🔄 Loop Grab Selected Player", CurrentValue=false, Flag="H_BlobGrabSel",
+    Callback=function(V) HS.BlobLoopGrabPlayer=V; task.spawn(function()
+        while HS.BlobLoopGrabPlayer do task.wait(0.15); pcall(function() local blob=getBlobman(); if blob and h_alive(HSelPlayer) then h_blobGrabPlayer(blob, HSelPlayer) end end) end
+    end) end})
 
-HomeTab:CreateToggle({
-    Name = "⚡ Speed Grab Player", CurrentValue = false, Flag = "H_SpeedGrab",
-    Callback = function(V)
-        HS.SpeedGrab = V
-        task.spawn(function()
-            while HS.SpeedGrab do task.wait(0.05)
-                pcall(function() local blob = getBlobman(); if blob and h_alive(HSelPlayer) then h_blobGrabPlayer(blob, HSelPlayer) end end)
-            end
-        end)
-    end,
-})
+HomeTab:CreateToggle({Name="⚡ Speed Grab Player", CurrentValue=false, Flag="H_SpeedGrab",
+    Callback=function(V) HS.SpeedGrab=V; task.spawn(function()
+        while HS.SpeedGrab do task.wait(0.05); pcall(function() local blob=getBlobman(); if blob and h_alive(HSelPlayer) then h_blobGrabPlayer(blob, HSelPlayer) end end) end
+    end) end})
 
-HomeTab:CreateButton({
-    Name = "🤏 Multiple Grab (All Blobmen)",
-    Callback = function()
-        pcall(function()
-            for _, m in pairs(Workspace:GetDescendants()) do
-                if m:IsA("Model") and (m.Name == "BlobMan" or m.Name == "Blobman") then
-                    for _, h in pairs(h_getBlobHands(m)) do
-                        firetouchinterest(HumanoidRootPart, h, 0); task.wait(0.02); firetouchinterest(HumanoidRootPart, h, 1)
-                    end
-                end
-            end
-        end)
-        Rayfield:Notify({Title="DMM",Content="Grabbed all Blobmen!",Duration=2})
-    end,
-})
+HomeTab:CreateButton({Name="🤏 Multiple Grab (All Blobmen)", Callback=function()
+    pcall(function() local hrp=getHRP(); if not hrp then return end
+        for _, m in pairs(Workspace:GetDescendants()) do if m:IsA("Model") and (m.Name=="BlobMan" or m.Name=="Blobman") then
+            for _, h in pairs(h_getBlobHands(m)) do firetouchinterest(hrp, h, 0); task.wait(0.02); firetouchinterest(hrp, h, 1) end end end end)
+    Rayfield:Notify({Title="DMM",Content="Grabbed all Blobmen!",Duration=2}) end})
 
 HomeTab:CreateSection("💎 Grab Mods")
 
 for _, gt in pairs({"Poison","Radioactive","Death","Burn","Void","Massless","Noclip","Kill","Freeze"}) do
-    HomeTab:CreateToggle({
-        Name = "💎 " .. gt .. " Grab", CurrentValue = false, Flag = "H_" .. gt .. "Grab",
-        Callback = function(V)
-            HS[gt .. "Grab"] = V
-            task.spawn(function()
-                while HS[gt .. "Grab"] do task.wait(0.3)
-                    pcall(function() local target = h_closest(HS.AuraRange); if target then h_applyGrabEffect(target, gt) end end)
-                end
-            end)
-        end,
-    })
+    HomeTab:CreateToggle({Name="💎 "..gt.." Grab", CurrentValue=false, Flag="H_"..gt.."Grab",
+        Callback=function(V) HS[gt.."Grab"]=V; task.spawn(function()
+            while HS[gt.."Grab"] do task.wait(0.3); pcall(function() local target=h_closest(HS.AuraRange); if target then h_applyGrabEffect(target, gt) end end) end
+        end) end})
 end
 
 HomeTab:CreateSlider({Name="Grab / Aura Range", Range={10,300}, Increment=5, Suffix="studs", CurrentValue=40, Flag="H_AuraRange", Callback=function(V) HS.AuraRange=V end})
@@ -953,14 +881,10 @@ HomeTab:CreateDropdown({Name="Select Player (Kick)", Options=getPlayerList(), Cu
     Callback=function(Opt) HSelPlayer=Players:FindFirstChild(Opt); HSelPlayerName=Opt end})
 
 HomeTab:CreateButton({Name="⚡ Instant Kick (Blobman)", Callback=function()
-    pcall(function()
-        local blob = getBlobman()
-        if blob and h_alive(HSelPlayer) then
-            for i=1,30 do h_blobKickPlayer(blob, HSelPlayer); task.wait(0.05) end
+    pcall(function() local blob=getBlobman()
+        if blob and h_alive(HSelPlayer) then for i=1,30 do h_blobKickPlayer(blob, HSelPlayer); task.wait(0.05) end
             Rayfield:Notify({Title="DMM",Content="Kicked "..HSelPlayerName.."!",Duration=2})
-        else Rayfield:Notify({Title="DMM",Content="Need Blobman + Target!",Duration=2}) end
-    end)
-end})
+        else Rayfield:Notify({Title="DMM",Content="Need Blobman + Target!",Duration=2}) end end) end})
 
 HomeTab:CreateToggle({Name="🔄 Loop Kick (Blobman)", CurrentValue=false, Flag="H_LoopKickBlob",
     Callback=function(V) HS.LoopKickBlob=V; task.spawn(function() while HS.LoopKickBlob do task.wait(0.2)
@@ -1001,7 +925,7 @@ HomeTab:CreateToggle({Name="🌊 Loop Void", CurrentValue=false, Flag="H_LoopVoi
         pcall(function() if h_alive(HSelPlayer) then h_voidPlayer(HSelPlayer) end end) end end) end})
 
 HomeTab:CreateButton({Name="🔗 Bring Selected", Callback=function()
-    pcall(function() if h_alive(HSelPlayer) then HSelPlayer.Character.HumanoidRootPart.CFrame=HumanoidRootPart.CFrame*CFrame.new(0,0,-5)
+    pcall(function() local hrp=getHRP(); if h_alive(HSelPlayer) and hrp then HSelPlayer.Character.HumanoidRootPart.CFrame=hrp.CFrame*CFrame.new(0,0,-5)
         Rayfield:Notify({Title="DMM",Content="Brought "..HSelPlayerName,Duration=2}) end end) end})
 
 HomeTab:CreateButton({Name="🔒 Lock Selected", Callback=function()
@@ -1037,25 +961,21 @@ for _, aura in pairs({
     {name="👣 Follow Aura", key="FollowAura", effect=nil},
     {name="👢 Kick Aura", key="KickAura", effect=nil},
 }) do
-    HomeTab:CreateToggle({
-        Name = aura.name, CurrentValue = false, Flag = "H_" .. aura.key,
-        Callback = function(V)
-            HS[aura.key] = V
-            task.spawn(function()
-                while HS[aura.key] do task.wait(0.3)
-                    for _, p in pairs(Players:GetPlayers()) do pcall(function()
-                        if p~=LocalPlayer and h_alive(p) and h_dist(p)<=HS.AuraRange then
-                            if aura.effect then h_applyGrabEffect(p, aura.effect)
-                            elseif aura.key=="FlingAura" then h_flingPlayer(p)
-                            elseif aura.key=="AttractionAura" then p.Character.HumanoidRootPart.CFrame=HumanoidRootPart.CFrame*CFrame.new(0,0,-3)
-                            elseif aura.key=="FollowAura" then if h_alive(HSelPlayer) then HumanoidRootPart.CFrame=HSelPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-3) end
-                            elseif aura.key=="KickAura" then local blob=getBlobman(); if blob then h_blobKickPlayer(blob, p) end end
-                        end
-                    end) end
-                end
-            end)
-        end,
-    })
+    HomeTab:CreateToggle({Name=aura.name, CurrentValue=false, Flag="H_"..aura.key,
+        Callback=function(V) HS[aura.key]=V; task.spawn(function()
+            while HS[aura.key] do task.wait(0.3)
+                for _, p in pairs(Players:GetPlayers()) do pcall(function()
+                    if p~=LocalPlayer and h_alive(p) and h_dist(p)<=HS.AuraRange then
+                        local hrp=getHRP()
+                        if aura.effect then h_applyGrabEffect(p, aura.effect)
+                        elseif aura.key=="FlingAura" then h_flingPlayer(p)
+                        elseif aura.key=="AttractionAura" and hrp then p.Character.HumanoidRootPart.CFrame=hrp.CFrame*CFrame.new(0,0,-3)
+                        elseif aura.key=="FollowAura" and hrp then if h_alive(HSelPlayer) then hrp.CFrame=HSelPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-3) end
+                        elseif aura.key=="KickAura" then local blob=getBlobman(); if blob then h_blobKickPlayer(blob, p) end end
+                    end
+                end) end
+            end
+        end) end})
 end
 
 HomeTab:CreateSlider({Name="Fling Aura Strength", Range={100,99999}, Increment=500, Suffix="power", CurrentValue=9999, Flag="H_FlingAuraStr", Callback=function(V) HS.FlingPower=V end})
@@ -1064,41 +984,43 @@ HomeTab:CreateSection("🛡️ Defense / Antis")
 
 HomeTab:CreateToggle({Name="🛡️ Anti Grab", CurrentValue=false, Flag="H_AntiGrab",
     Callback=function(V) HS.AntiGrab=V; task.spawn(function() while HS.AntiGrab do task.wait(0.05)
-        pcall(function() for _, v in pairs(Character:GetDescendants()) do
-            if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 then
-                if not v.Part0:IsDescendantOf(Character) or not v.Part1:IsDescendantOf(Character) then v:Destroy() end end end
-            if Humanoid.SeatPart and not Humanoid.SeatPart:IsDescendantOf(Character) then Humanoid.Jump=true end end) end end) end})
+        pcall(function() local char=getChar(); local hum=getHum(); if not char then return end
+            for _, v in pairs(char:GetDescendants()) do if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 then
+                if not v.Part0:IsDescendantOf(char) or not v.Part1:IsDescendantOf(char) then v:Destroy() end end end
+            if hum and hum.SeatPart and not hum.SeatPart:IsDescendantOf(char) then hum.Jump=true end end) end end) end})
 
 HomeTab:CreateToggle({Name="🛡️ Gucci Anti", CurrentValue=false, Flag="H_GucciAnti",
     Callback=function(V) HS.GucciAnti=V; task.spawn(function() while HS.GucciAnti do task.wait(0.02)
-        pcall(function() for _, v in pairs(Character:GetDescendants()) do
-            if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 and (not v.Part0:IsDescendantOf(Character) or not v.Part1:IsDescendantOf(Character)) then v:Destroy() end
-            if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity") then if v.Parent and v.Parent:IsDescendantOf(Character) then v:Destroy() end end end
-            if HumanoidRootPart.Velocity.Magnitude>300 then HumanoidRootPart.Velocity=Vector3.zero; HumanoidRootPart.RotVelocity=Vector3.zero end
-            if Humanoid.SeatPart and not Humanoid.SeatPart:IsDescendantOf(Character) then Humanoid.Jump=true end end) end end) end})
+        pcall(function() local char=getChar(); local hum=getHum(); local hrp=getHRP(); if not char or not hrp then return end
+            for _, v in pairs(char:GetDescendants()) do
+                if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 and (not v.Part0:IsDescendantOf(char) or not v.Part1:IsDescendantOf(char)) then v:Destroy() end
+                if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity") then if v.Parent and v.Parent:IsDescendantOf(char) then v:Destroy() end end end
+            if hrp.Velocity.Magnitude>300 then hrp.Velocity=Vector3.zero; hrp.RotVelocity=Vector3.zero end
+            if hum and hum.SeatPart and not hum.SeatPart:IsDescendantOf(char) then hum.Jump=true end end) end end) end})
 
 HomeTab:CreateToggle({Name="🛡️ Anti Blobman", CurrentValue=false, Flag="H_AntiBlobman",
     Callback=function(V) HS.AntiBlobman=V; task.spawn(function() while HS.AntiBlobman do task.wait(0.05)
-        pcall(function()
-            if Humanoid.SeatPart and Humanoid.SeatPart.Parent and Humanoid.SeatPart.Parent.Name:lower():find("blob") then Humanoid.Jump=true end
-            for _, v in pairs(Character:GetDescendants()) do if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 then
-                local other = v.Part0:IsDescendantOf(Character) and v.Part1 or v.Part0
+        pcall(function() local char=getChar(); local hum=getHum(); if not char or not hum then return end
+            if hum.SeatPart and hum.SeatPart.Parent and hum.SeatPart.Parent.Name:lower():find("blob") then hum.Jump=true end
+            for _, v in pairs(char:GetDescendants()) do if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 then
+                local other = v.Part0:IsDescendantOf(char) and v.Part1 or v.Part0
                 if other and other.Parent and (other.Parent.Name:lower():find("blob") or other.Name:lower():find("hand")) then v:Destroy() end end end end) end end) end})
 
 HomeTab:CreateToggle({Name="🛡️ Anti Explosion", CurrentValue=false, Flag="H_AntiExpl", Callback=function(V) HS.AntiExplosion=V end})
 
 HomeTab:CreateToggle({Name="🛡️ Anti Kick", CurrentValue=false, Flag="H_AntiKick",
     Callback=function(V) HS.AntiKick=V; task.spawn(function() while HS.AntiKick do task.wait(0.03)
-        pcall(function() if HumanoidRootPart.Velocity.Magnitude>200 then HumanoidRootPart.Velocity=Vector3.zero; HumanoidRootPart.RotVelocity=Vector3.zero end
-            for _, v in pairs(HumanoidRootPart:GetChildren()) do if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity") then v:Destroy() end end end) end end) end})
+        pcall(function() local hrp=getHRP(); if not hrp then return end
+            if hrp.Velocity.Magnitude>200 then hrp.Velocity=Vector3.zero; hrp.RotVelocity=Vector3.zero end
+            for _, v in pairs(hrp:GetChildren()) do if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity") then v:Destroy() end end end) end end) end})
 
 HomeTab:CreateToggle({Name="🛡️ Anti Void", CurrentValue=false, Flag="H_AntiVoid",
     Callback=function(V) HS.AntiVoid=V; task.spawn(function() while HS.AntiVoid do task.wait(0.1)
-        pcall(function() if HumanoidRootPart.Position.Y<-100 then HumanoidRootPart.CFrame=CFrame.new(0,50,0) end end) end end) end})
+        pcall(function() local hrp=getHRP(); if hrp and hrp.Position.Y<-100 then hrp.CFrame=CFrame.new(0,50,0) end end) end end) end})
 
 HomeTab:CreateToggle({Name="🛡️ Anti Burn", CurrentValue=false, Flag="H_AntiBurn",
     Callback=function(V) HS.AntiBurn=V; task.spawn(function() while HS.AntiBurn do task.wait(0.5)
-        pcall(function() for _, v in pairs(Character:GetDescendants()) do if v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then v:Destroy() end end end) end end) end})
+        pcall(function() local char=getChar(); if char then for _, v in pairs(char:GetDescendants()) do if v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then v:Destroy() end end end end) end end) end})
 
 HomeTab:CreateToggle({Name="🛡️ Anti Lag", CurrentValue=false, Flag="H_AntiLag",
     Callback=function(V) HS.AntiLag=V; if V then pcall(function()
@@ -1109,25 +1031,31 @@ HomeTab:CreateToggle({Name="🛡️ Anti Lag", CurrentValue=false, Flag="H_AntiL
 
 HomeTab:CreateSection("🏃 Player")
 
-HomeTab:CreateSlider({Name="Walk Speed", Range={16,500}, Increment=1, Suffix="speed", CurrentValue=16, Flag="H_WS", Callback=function(V) pcall(function() Humanoid.WalkSpeed=V end) end})
-HomeTab:CreateSlider({Name="Jump Power", Range={50,500}, Increment=1, Suffix="power", CurrentValue=50, Flag="H_JP", Callback=function(V) pcall(function() Humanoid.UseJumpPower=true; Humanoid.JumpPower=V end) end})
+HomeTab:CreateSlider({Name="Walk Speed", Range={16,500}, Increment=1, Suffix="speed", CurrentValue=16, Flag="H_WS",
+    Callback=function(V) pcall(function() local hum=getHum(); if hum then hum.WalkSpeed=V end end) end})
+
+HomeTab:CreateSlider({Name="Jump Power", Range={50,500}, Increment=1, Suffix="power", CurrentValue=50, Flag="H_JP",
+    Callback=function(V) pcall(function() local hum=getHum(); if hum then hum.UseJumpPower=true; hum.JumpPower=V end end) end})
+
 HomeTab:CreateToggle({Name="♾️ Infinite Jump", CurrentValue=false, Flag="H_InfJump", Callback=function(V) HS.InfJump=V end})
 HomeTab:CreateToggle({Name="👻 Noclip", CurrentValue=false, Flag="H_Noclip", Callback=function(V) HS.Noclip=V end})
 
 HomeTab:CreateToggle({Name="🛡️ God Mode", CurrentValue=false, Flag="H_GodMode",
     Callback=function(V) HS.GodMode=V; task.spawn(function() while HS.GodMode do task.wait(0.1)
-        pcall(function() Humanoid.Health=Humanoid.MaxHealth end) end end) end})
+        pcall(function() local hum=getHum(); if hum then hum.Health=hum.MaxHealth end end) end end) end})
 
 local h_flyBV, h_flyBG
 HomeTab:CreateToggle({Name="✈️ Fly", CurrentValue=false, Flag="H_Fly",
-    Callback=function(V) HS.Fly=V; Flying=V; if V then
-        h_flyBV=Instance.new("BodyVelocity"); h_flyBV.MaxForce=Vector3.new(1e9,1e9,1e9); h_flyBV.Velocity=Vector3.zero; h_flyBV.Parent=HumanoidRootPart
-        h_flyBG=Instance.new("BodyGyro"); h_flyBG.MaxTorque=Vector3.new(1e9,1e9,1e9); h_flyBG.P=9e4; h_flyBG.Parent=HumanoidRootPart
-        task.spawn(function() while HS.Fly do RunService.Heartbeat:Wait()
-            pcall(function() local cam=Workspace.CurrentCamera
-                if Humanoid.MoveDirection.Magnitude>0 then h_flyBV.Velocity=cam.CFrame.LookVector*HS.FlySpeed else h_flyBV.Velocity=Vector3.zero end
-                h_flyBG.CFrame=cam.CFrame end) end end)
-    else pcall(function() h_flyBV:Destroy() end); pcall(function() h_flyBG:Destroy() end) end end})
+    Callback=function(V) HS.Fly=V; Flying=V
+        if V then
+            local hrp=getHRP(); local hum=getHum(); if not hrp then return end
+            h_flyBV=Instance.new("BodyVelocity"); h_flyBV.MaxForce=Vector3.new(1e9,1e9,1e9); h_flyBV.Velocity=Vector3.zero; h_flyBV.Parent=hrp
+            h_flyBG=Instance.new("BodyGyro"); h_flyBG.MaxTorque=Vector3.new(1e9,1e9,1e9); h_flyBG.P=9e4; h_flyBG.Parent=hrp
+            task.spawn(function() while HS.Fly do RunService.Heartbeat:Wait()
+                pcall(function() local cam=Workspace.CurrentCamera; local hum2=getHum()
+                    if hum2 and hum2.MoveDirection.Magnitude>0 then h_flyBV.Velocity=cam.CFrame.LookVector*HS.FlySpeed else h_flyBV.Velocity=Vector3.zero end
+                    h_flyBG.CFrame=cam.CFrame end) end end)
+        else pcall(function() h_flyBV:Destroy() end); pcall(function() h_flyBG:Destroy() end) end end})
 
 HomeTab:CreateSlider({Name="Fly Speed", Range={10,500}, Increment=5, Suffix="speed", CurrentValue=50, Flag="H_FlySpd", Callback=function(V) HS.FlySpeed=V end})
 
@@ -1147,48 +1075,46 @@ HomeTab:CreateToggle({Name="👁 ESP Players", CurrentValue=false, Flag="H_ESP",
                     local dl=Instance.new("TextLabel"); dl.Size=UDim2.new(1,0,0.5,0); dl.Position=UDim2.new(0,0,0.5,0); dl.BackgroundTransparency=1
                     dl.TextColor3=Color3.new(1,1,1); dl.TextStrokeTransparency=0.5; dl.TextScaled=true; dl.Font=Enum.Font.Gotham; dl.Parent=bb
                     local hl=Instance.new("Highlight"); hl.Name="HDMM_HL"; hl.FillColor=Color3.fromRGB(255,0,0); hl.FillTransparency=0.7; hl.OutlineColor=Color3.fromRGB(255,255,0); hl.Parent=char
-                    task.spawn(function() while char.Parent and head.Parent do pcall(function()
-                        dl.Text="["..math.floor((HumanoidRootPart.Position-head.Position).Magnitude).."m]" end); task.wait(0.5) end end)
+                    task.spawn(function() while char.Parent and head.Parent do pcall(function() local hrp=getHRP()
+                        if hrp then dl.Text="["..math.floor((hrp.Position-head.Position).Magnitude).."m]" end end); task.wait(0.5) end end)
                 end
-                if player.Character then onChar(player.Character) end
-                player.CharacterAdded:Connect(onChar)
+                if player.Character then onChar(player.Character) end; player.CharacterAdded:Connect(onChar)
             end
-            for _, p in pairs(Players:GetPlayers()) do h_addESP(p) end
-            Players.PlayerAdded:Connect(h_addESP)
+            for _, p in pairs(Players:GetPlayers()) do h_addESP(p) end; Players.PlayerAdded:Connect(h_addESP)
         else
             for _, p in pairs(Players:GetPlayers()) do if p.Character then
                 for _, v in pairs(p.Character:GetDescendants()) do if v.Name=="HDMM_ESP" or v.Name=="HDMM_HL" then v:Destroy() end end end end
-        end
-    end})
+        end end})
 
 HomeTab:CreateToggle({Name="💡 Fullbright", CurrentValue=false, Flag="H_FB",
     Callback=function(V) if V then Lighting.Brightness=2; Lighting.ClockTime=14; Lighting.FogEnd=1e6; Lighting.GlobalShadows=false; Lighting.Ambient=Color3.fromRGB(178,178,178)
     else Lighting.Brightness=1; Lighting.ClockTime=14; Lighting.FogEnd=1e4; Lighting.GlobalShadows=true; Lighting.Ambient=Color3.fromRGB(0,0,0) end end})
 
 HomeTab:CreateButton({Name="✨ TetraCube Wings", Callback=function()
-    pcall(function() for i=-1,1,2 do local w=Instance.new("Part"); w.Name="HDMM_Wing"; w.Size=Vector3.new(0.2,4,3); w.Color=Color3.fromRGB(100,0,255)
-        w.Material=Enum.Material.Neon; w.Transparency=0.3; w.CanCollide=false; w.Massless=true; w.Parent=Character
-        local weld=Instance.new("Weld"); weld.Part0=HumanoidRootPart; weld.Part1=w; weld.C0=CFrame.new(i*1.5,0.5,0.8)*CFrame.Angles(0,0,math.rad(-30*i)); weld.Parent=w end end)
+    pcall(function() local char=getChar(); local hrp=getHRP(); if not char or not hrp then return end
+        for i=-1,1,2 do local w=Instance.new("Part"); w.Name="HDMM_Wing"; w.Size=Vector3.new(0.2,4,3); w.Color=Color3.fromRGB(100,0,255)
+        w.Material=Enum.Material.Neon; w.Transparency=0.3; w.CanCollide=false; w.Massless=true; w.Parent=char
+        local weld=Instance.new("Weld"); weld.Part0=hrp; weld.Part1=w; weld.C0=CFrame.new(i*1.5,0.5,0.8)*CFrame.Angles(0,0,math.rad(-30*i)); weld.Parent=w end end)
     Rayfield:Notify({Title="DMM",Content="Wings added!",Duration=2}) end})
 
 HomeTab:CreateSection("🌀 Teleport")
 
 HomeTab:CreateDropdown({Name="TP to Player", Options=getPlayerList(), CurrentOption={}, MultiOption=false, Flag="H_TpPlr",
-    Callback=function(Opt) pcall(function() local t=Players:FindFirstChild(Opt); if h_alive(t) then IsTeleporting=true
-        HumanoidRootPart.CFrame=t.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0); Rayfield:Notify({Title="DMM",Content="TP'd to "..Opt,Duration=2})
+    Callback=function(Opt) pcall(function() local t=Players:FindFirstChild(Opt); local hrp=getHRP(); if h_alive(t) and hrp then IsTeleporting=true
+        hrp.CFrame=t.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0); Rayfield:Notify({Title="DMM",Content="TP'd to "..Opt,Duration=2})
         task.defer(function() task.wait(0.5); IsTeleporting=false end) end end) end})
 
 HomeTab:CreateToggle({Name="🔄 Loop TP to Selected", CurrentValue=false, Flag="H_LoopTP",
     Callback=function(V) HS.LoopTP=V; task.spawn(function() while HS.LoopTP do RunService.Heartbeat:Wait()
-        pcall(function() if h_alive(HSelPlayer) then HumanoidRootPart.CFrame=HSelPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-3) end end) end end) end})
+        pcall(function() local hrp=getHRP(); if h_alive(HSelPlayer) and hrp then hrp.CFrame=HSelPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-3) end end) end end) end})
 
-HomeTab:CreateButton({Name="🏠 TP to Spawn", Callback=function() pcall(function() IsTeleporting=true
-    local sp=Workspace:FindFirstChildWhichIsA("SpawnLocation",true); if sp then HumanoidRootPart.CFrame=sp.CFrame+Vector3.new(0,5,0) else HumanoidRootPart.CFrame=CFrame.new(0,50,0) end
+HomeTab:CreateButton({Name="🏠 TP to Spawn", Callback=function() pcall(function() IsTeleporting=true; local hrp=getHRP(); if not hrp then return end
+    local sp=Workspace:FindFirstChildWhichIsA("SpawnLocation",true); if sp then hrp.CFrame=sp.CFrame+Vector3.new(0,5,0) else hrp.CFrame=CFrame.new(0,50,0) end
     task.defer(function() task.wait(0.5); IsTeleporting=false end) end) end})
 
-HomeTab:CreateButton({Name="🎲 TP to Random", Callback=function() pcall(function()
+HomeTab:CreateButton({Name="🎲 TP to Random", Callback=function() pcall(function() local hrp=getHRP(); if not hrp then return end
     local list={}; for _, p in pairs(Players:GetPlayers()) do if p~=LocalPlayer and h_alive(p) then table.insert(list,p) end end
-    if #list>0 then IsTeleporting=true; local r=list[math.random(#list)]; HumanoidRootPart.CFrame=r.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
+    if #list>0 then IsTeleporting=true; local r=list[math.random(#list)]; hrp.CFrame=r.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
         Rayfield:Notify({Title="DMM",Content="TP'd to "..r.Name,Duration=2}); task.defer(function() task.wait(0.5); IsTeleporting=false end) end end) end})
 
 HomeTab:CreateSection("💥 Server Attacks")
@@ -1208,24 +1134,28 @@ HomeTab:CreateToggle({Name="🔥 Burn ALL", CurrentValue=false, Flag="H_BurnAll"
 
 HomeTab:CreateToggle({Name="🔗 Bring Server", CurrentValue=false, Flag="H_BringAll",
     Callback=function(V) HS.BringServer=V; task.spawn(function() while HS.BringServer do task.wait(0.3)
+        local hrp=getHRP(); if not hrp then task.wait(0.5) continue end
         for _, p in pairs(Players:GetPlayers()) do pcall(function() if p~=LocalPlayer and h_alive(p) then
-            p.Character.HumanoidRootPart.CFrame=HumanoidRootPart.CFrame*CFrame.new(math.random(-5,5),0,math.random(-5,5)) end end) end end end) end})
+            p.Character.HumanoidRootPart.CFrame=hrp.CFrame*CFrame.new(math.random(-5,5),0,math.random(-5,5)) end end) end end end) end})
 
 HomeTab:CreateSection("🎮 FE Objects")
 
 HomeTab:CreateToggle({Name="🌪️ FE Tornado", CurrentValue=false, Flag="H_FeTornado",
     Callback=function(V) HS.FeObjectTornado=V; task.spawn(function() local angle=0; while HS.FeObjectTornado do RunService.Heartbeat:Wait(); angle=angle+5
-        pcall(function() for _, obj in pairs(Workspace:GetChildren()) do if obj:IsA("BasePart") and not obj.Anchored and obj~=HumanoidRootPart and not obj:IsDescendantOf(Character) then
-            obj.CFrame=CFrame.new(HumanoidRootPart.Position.X+math.cos(math.rad(angle))*20, HumanoidRootPart.Position.Y+(angle%360)/36, HumanoidRootPart.Position.Z+math.sin(math.rad(angle))*20) end end end) end end) end})
+        pcall(function() local hrp=getHRP(); if not hrp then return end
+            for _, obj in pairs(Workspace:GetChildren()) do if obj:IsA("BasePart") and not obj.Anchored and obj~=hrp and not obj:IsDescendantOf(getChar() or game) then
+            obj.CFrame=CFrame.new(hrp.Position.X+math.cos(math.rad(angle))*20, hrp.Position.Y+(angle%360)/36, hrp.Position.Z+math.sin(math.rad(angle))*20) end end end) end end) end})
 
 HomeTab:CreateToggle({Name="🌐 FE Aura", CurrentValue=false, Flag="H_FeAura",
     Callback=function(V) HS.FeObjectAura=V; task.spawn(function() local a=0; while HS.FeObjectAura do RunService.Heartbeat:Wait(); a=a+3
-        pcall(function() local i=0; for _, obj in pairs(Workspace:GetChildren()) do if obj:IsA("BasePart") and not obj.Anchored and obj~=HumanoidRootPart and not obj:IsDescendantOf(Character) then
-            i=i+1; local ang=math.rad(a+i*30); obj.CFrame=HumanoidRootPart.CFrame*CFrame.new(math.cos(ang)*10,2,math.sin(ang)*10) end end end) end end) end})
+        pcall(function() local hrp=getHRP(); if not hrp then return end; local i=0
+            for _, obj in pairs(Workspace:GetChildren()) do if obj:IsA("BasePart") and not obj.Anchored and obj~=hrp and not obj:IsDescendantOf(getChar() or game) then
+            i=i+1; local ang=math.rad(a+i*30); obj.CFrame=hrp.CFrame*CFrame.new(math.cos(ang)*10,2,math.sin(ang)*10) end end end) end end) end})
 
 HomeTab:CreateToggle({Name="☁️ FE Float", CurrentValue=false, Flag="H_FeFloat",
     Callback=function(V) HS.FeObjectFloat=V; task.spawn(function() while HS.FeObjectFloat do task.wait(0.1)
-        pcall(function() for _, obj in pairs(Workspace:GetChildren()) do if obj:IsA("BasePart") and not obj.Anchored and not obj:IsDescendantOf(Character) then
+        pcall(function() local char=getChar()
+            for _, obj in pairs(Workspace:GetChildren()) do if obj:IsA("BasePart") and not obj.Anchored and not obj:IsDescendantOf(char or game) then
             local bv=Instance.new("BodyVelocity"); bv.MaxForce=Vector3.new(0,1e5,0); bv.Velocity=Vector3.new(0,30,0); bv.Parent=obj; Debris:AddItem(bv,0.5) end end end) end end) end})
 
 HomeTab:CreateToggle({Name="🔊 Spam Sounds", CurrentValue=false, Flag="H_SpamSnd",
@@ -1236,9 +1166,10 @@ HomeTab:CreateSection("⚙️ Utility")
 
 HomeTab:CreateToggle({Name="💰 Auto Claim Cash", CurrentValue=false, Flag="H_AutoCash",
     Callback=function(V) HS.AutoCash=V; task.spawn(function() while HS.AutoCash do task.wait(0.5)
-        pcall(function() for _, obj in pairs(Workspace:GetDescendants()) do if obj:IsA("ProximityPrompt") then fireproximityprompt(obj) end end
+        pcall(function() local hrp=getHRP(); if not hrp then return end
+            for _, obj in pairs(Workspace:GetDescendants()) do if obj:IsA("ProximityPrompt") then fireproximityprompt(obj) end end
             for _, obj in pairs(Workspace:GetDescendants()) do if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("cash")) then
-                firetouchinterest(HumanoidRootPart,obj,0); task.wait(0.02); firetouchinterest(HumanoidRootPart,obj,1) end end end) end end) end})
+                firetouchinterest(hrp,obj,0); task.wait(0.02); firetouchinterest(hrp,obj,1) end end end) end end) end})
 
 HomeTab:CreateToggle({Name="🚫 Anti AFK", CurrentValue=true, Flag="H_AntiAFK",
     Callback=function(V) if V then LocalPlayer.Idled:Connect(function()
@@ -1246,8 +1177,8 @@ HomeTab:CreateToggle({Name="🚫 Anti AFK", CurrentValue=true, Flag="H_AntiAFK",
 
 HomeTab:CreateToggle({Name="🖱️ Click Teleport", CurrentValue=false, Flag="H_ClickTP", Callback=function(V) HS.ClickTP=V end})
 do local mouse=LocalPlayer:GetMouse(); mouse.Button1Down:Connect(function()
-    if HS.ClickTP and mouse.Hit then IsTeleporting=true; HumanoidRootPart.CFrame=mouse.Hit+Vector3.new(0,3,0)
-        task.defer(function() task.wait(0.5); IsTeleporting=false end) end end) end
+    if HS.ClickTP and mouse.Hit then local hrp=getHRP(); if hrp then IsTeleporting=true; hrp.CFrame=mouse.Hit+Vector3.new(0,3,0)
+        task.defer(function() task.wait(0.5); IsTeleporting=false end) end end end) end
 
 HomeTab:CreateButton({Name="🔄 Rejoin Server", Callback=function() game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end})
 
@@ -1261,7 +1192,7 @@ HomeTab:CreateButton({Name="📋 Copy Game Link", Callback=function()
     Rayfield:Notify({Title="DMM",Content="Link copied!",Duration=2}) end})
 
 HomeTab:CreateButton({Name="❌ Destroy DMM HUB", Callback=function()
-    Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false; AntiAllHacksEnabled=false; LoopResetEnabled=false
+    _dmmHubAlive=false; Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false; AntiAllHacksEnabled=false; LoopResetEnabled=false
     for _, conn in pairs(AntiAllHacksConnections) do pcall(function() conn:Disconnect() end) end; Rayfield:Destroy() end})
 
 -- ═══════════════════════════════════════════════════
@@ -1272,9 +1203,9 @@ BlobTab:CreateSection("Blobman Controls")
 
 BlobTab:CreateToggle({Name="Blobman Grab", CurrentValue=false, Flag="BlobGrab",
     Callback=function(V) Settings.BlobmanGrab=V; if V then task.spawn(function() while Settings.BlobmanGrab do task.wait(0.1)
-        pcall(function() local blob=getBlobman(); if blob then local r=getGrabbableRemote(); if r then r:FireServer(blob) end
+        pcall(function() local blob=getBlobman(); local hrp=getHRP(); if blob and hrp then local r=getGrabbableRemote(); if r then r:FireServer(blob) end
             local part=blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
-            if part and HumanoidRootPart then firetouchinterest(HumanoidRootPart,part,0); task.wait(0.05); firetouchinterest(HumanoidRootPart,part,1) end end end) end end) end end})
+            if part then firetouchinterest(hrp,part,0); task.wait(0.05); firetouchinterest(hrp,part,1) end end end) end end) end end})
 
 BlobTab:CreateToggle({Name="Loop Grab All", CurrentValue=false, Flag="BlobLoopGrabAll",
     Callback=function(V) Settings.BlobmanLoopGrab=V; task.spawn(function() while Settings.BlobmanLoopGrab do task.wait(0.15)
@@ -1292,17 +1223,17 @@ BlobTab:CreateDropdown({Name="Blob TP to Player", Options=getPlayerList(), Curre
         if t and t.Character and blob then local bp=blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
             if bp and t.Character:FindFirstChild("HumanoidRootPart") then bp.CFrame=t.Character.HumanoidRootPart.CFrame end end end) end})
 
-BlobTab:CreateButton({Name="Multiple Blob Grab", Callback=function() pcall(function()
+BlobTab:CreateButton({Name="Multiple Blob Grab", Callback=function() pcall(function() local hrp=getHRP(); if not hrp then return end
     for _, b in pairs(getAllBlobmen()) do local part=b:IsA("BasePart") and b or b:FindFirstChildWhichIsA("BasePart")
-        if part then firetouchinterest(HumanoidRootPart,part,0); task.wait(0.05); firetouchinterest(HumanoidRootPart,part,1) end end end)
+        if part then firetouchinterest(hrp,part,0); task.wait(0.05); firetouchinterest(hrp,part,1) end end end)
     Rayfield:Notify({Title="DMM",Content="Grabbed all!",Duration=3}) end})
 
 BlobTab:CreateSection("Grab Mods")
 
 BlobTab:CreateToggle({Name="Kill Grab", CurrentValue=false, Flag="KillGrab",
     Callback=function(V) Settings.KillGrab=V; task.spawn(function() while Settings.KillGrab do task.wait(0.1)
-        pcall(function() local t=getClosestPlayer(AuraRange); if t and t.Character then local hrp=t.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then HumanoidRootPart.CFrame=hrp.CFrame*CFrame.new(0,0,-2); applyVelocity(hrp,Vector3.new(0,-1000,0),9999) end end end) end end) end})
+        pcall(function() local t=getClosestPlayer(AuraRange); local hrp=getHRP(); if t and t.Character and hrp then local thrp=t.Character:FindFirstChild("HumanoidRootPart")
+            if thrp then hrp.CFrame=thrp.CFrame*CFrame.new(0,0,-2); applyVelocity(thrp,Vector3.new(0,-1000,0),9999) end end end) end end) end})
 
 BlobTab:CreateToggle({Name="Void Grab", CurrentValue=false, Flag="VoidGrab",
     Callback=function(V) Settings.VoidGrab=V; task.spawn(function() while Settings.VoidGrab do task.wait(0.2)
@@ -1340,11 +1271,12 @@ KickTab:CreateDropdown({Name="Select Player", Options=getPlayerList(), CurrentOp
 
 KickTab:CreateButton({Name="⚡ Instant Kick", Callback=function() pcall(function()
     if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp=getHRP(); local hum=getHum(); if not hrp then return end
         local blob=getBlobman(); if blob then local bp=blob:IsA("BasePart") and blob or blob:FindFirstChildWhichIsA("BasePart")
             if bp then for i=1,20 do bp.CFrame=SelectedPlayer.Character.HumanoidRootPart.CFrame; applyVelocity(SelectedPlayer.Character.HumanoidRootPart,Vector3.new(0,5000,0),9999); task.wait(0.05) end end
-        else for i=1,30 do HumanoidRootPart.CFrame=SelectedPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-1); Humanoid.WalkSpeed=500
-            applyVelocity(SelectedPlayer.Character.HumanoidRootPart,(SelectedPlayer.Character.HumanoidRootPart.Position-HumanoidRootPart.Position).Unit*3000+Vector3.new(0,2000,0),1); task.wait(0.05) end
-            Humanoid.WalkSpeed=WalkSpeedVal end
+        else for i=1,30 do hrp.CFrame=SelectedPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-1); if hum then hum.WalkSpeed=500 end
+            applyVelocity(SelectedPlayer.Character.HumanoidRootPart,(SelectedPlayer.Character.HumanoidRootPart.Position-hrp.Position).Unit*3000+Vector3.new(0,2000,0),1); task.wait(0.05) end
+            if hum then hum.WalkSpeed=WalkSpeedVal end end
         Rayfield:Notify({Title="DMM",Content="Kicked "..SelectedPlayer.Name.."!",Duration=3})
     else Rayfield:Notify({Title="DMM",Content="Select player first!",Duration=3}) end end) end})
 
@@ -1391,37 +1323,42 @@ CombatTab:CreateSection("Auras")
 
 CombatTab:CreateToggle({Name="Fling Aura", CurrentValue=false, Flag="C_FlingAura",
     Callback=function(V) Settings.FlingAura=V; task.spawn(function() while Settings.FlingAura do task.wait(0.2)
+        local hrp=getHRP(); if not hrp then task.wait(0.5); continue end
         for _, p in pairs(Players:GetPlayers()) do pcall(function() if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            if (HumanoidRootPart.Position-p.Character.HumanoidRootPart.Position).Magnitude<=AuraRange then flingPlayer(p) end end end) end end end) end})
+            if (hrp.Position-p.Character.HumanoidRootPart.Position).Magnitude<=AuraRange then flingPlayer(p) end end end) end end end) end})
 
 CombatTab:CreateToggle({Name="Void Aura", CurrentValue=false, Flag="C_VoidAura",
     Callback=function(V) Settings.VoidAura=V; task.spawn(function() while Settings.VoidAura do task.wait(0.5)
+        local hrp=getHRP(); if not hrp then task.wait(0.5); continue end
         for _, p in pairs(Players:GetPlayers()) do pcall(function() if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            if (HumanoidRootPart.Position-p.Character.HumanoidRootPart.Position).Magnitude<=AuraRange then voidPlayer(p) end end end) end end end) end})
+            if (hrp.Position-p.Character.HumanoidRootPart.Position).Magnitude<=AuraRange then voidPlayer(p) end end end) end end end) end})
 
 CombatTab:CreateToggle({Name="Follow Aura", CurrentValue=false, Flag="C_FollowAura",
     Callback=function(V) Settings.FollowAura=V; task.spawn(function() while Settings.FollowAura do RunService.Heartbeat:Wait()
-        pcall(function() if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            HumanoidRootPart.CFrame=SelectedPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-3) end end) end end) end})
+        pcall(function() local hrp=getHRP(); if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") and hrp then
+            hrp.CFrame=SelectedPlayer.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,-3) end end) end end) end})
 
 CombatTab:CreateToggle({Name="Kill Aura", CurrentValue=false, Flag="C_KillAura",
     Callback=function(V) Settings.KillAura=V; task.spawn(function() while Settings.KillAura do task.wait(0.3)
+        local hrp=getHRP(); if not hrp then task.wait(0.5); continue end
         for _, p in pairs(Players:GetPlayers()) do pcall(function() if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            if (HumanoidRootPart.Position-p.Character.HumanoidRootPart.Position).Magnitude<=AuraRange then p.Character.HumanoidRootPart.CFrame=CFrame.new(0,-500,0) end end end) end end end) end})
+            if (hrp.Position-p.Character.HumanoidRootPart.Position).Magnitude<=AuraRange then p.Character.HumanoidRootPart.CFrame=CFrame.new(0,-500,0) end end end) end end end) end})
 
 CombatTab:CreateSection("Defensive")
 
 CombatTab:CreateToggle({Name="Anti Grab", CurrentValue=false, Flag="C_AntiGrab",
     Callback=function(V) Settings.AntiGrab=V; task.spawn(function() while Settings.AntiGrab do task.wait(0.1)
-        pcall(function() for _, v in pairs(Character:GetDescendants()) do if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 then
-            if not v.Part0:IsDescendantOf(Character) or not v.Part1:IsDescendantOf(Character) then v:Destroy() end end end end) end end) end})
+        pcall(function() local char=getChar(); if not char then return end
+            for _, v in pairs(char:GetDescendants()) do if (v:IsA("Weld") or v:IsA("WeldConstraint")) and v.Part0 and v.Part1 then
+            if not v.Part0:IsDescendantOf(char) or not v.Part1:IsDescendantOf(char) then v:Destroy() end end end end) end end) end})
 
 CombatTab:CreateToggle({Name="Anti Explosion", CurrentValue=false, Flag="C_AntiExplosion", Callback=function(V) Settings.AntiExplosion=V end})
 
 CombatTab:CreateToggle({Name="Anti Kick", CurrentValue=false, Flag="C_AntiKick",
     Callback=function(V) Settings.AntiKick=V; task.spawn(function() while Settings.AntiKick do task.wait(0.05)
-        pcall(function() if HumanoidRootPart.Velocity.Magnitude>200 then HumanoidRootPart.Velocity=Vector3.zero; HumanoidRootPart.RotVelocity=Vector3.zero end
-            for _, v in pairs(HumanoidRootPart:GetChildren()) do if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") then v:Destroy() end end end) end end) end})
+        pcall(function() local hrp=getHRP(); if not hrp then return end
+            if hrp.Velocity.Magnitude>200 then hrp.Velocity=Vector3.zero; hrp.RotVelocity=Vector3.zero end
+            for _, v in pairs(hrp:GetChildren()) do if v:IsA("BodyVelocity") or v:IsA("BodyForce") or v:IsA("BodyThrust") then v:Destroy() end end end) end end) end})
 
 -- ═══════════════════════════════════════════════════
 -- TAB: 🏃 PLAYER
@@ -1429,31 +1366,33 @@ CombatTab:CreateToggle({Name="Anti Kick", CurrentValue=false, Flag="C_AntiKick",
 local PlayerTab = Window:CreateTab("🏃 Player", 0)
 
 PlayerTab:CreateSlider({Name="Walk Speed", Range={16,500}, Increment=1, Suffix="Speed", CurrentValue=16, Flag="WalkSpeed",
-    Callback=function(V) WalkSpeedVal=V; if Humanoid then Humanoid.WalkSpeed=V end end})
+    Callback=function(V) WalkSpeedVal=V; pcall(function() local hum=getHum(); if hum then hum.WalkSpeed=V end end) end})
 
 PlayerTab:CreateSlider({Name="Jump Power", Range={50,500}, Increment=1, Suffix="Power", CurrentValue=50, Flag="JumpPower",
-    Callback=function(V) JumpPowerVal=V; if Humanoid then Humanoid.UseJumpPower=true; Humanoid.JumpPower=V end end})
+    Callback=function(V) JumpPowerVal=V; pcall(function() local hum=getHum(); if hum then hum.UseJumpPower=true; hum.JumpPower=V end end) end})
 
 PlayerTab:CreateToggle({Name="Infinite Jump", CurrentValue=false, Flag="P_InfJump", Callback=function(V) Settings.InfJump=V end})
-UserInputService.JumpRequest:Connect(function() if Settings.InfJump and Humanoid then Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end)
+UserInputService.JumpRequest:Connect(function() if Settings.InfJump then pcall(function() local hum=getHum(); if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end) end end)
 
 PlayerTab:CreateToggle({Name="Noclip", CurrentValue=false, Flag="P_Noclip", Callback=function(V) Settings.Noclip=V end})
-RunService.Stepped:Connect(function() if Settings.Noclip and Character then for _, part in pairs(Character:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide=false end end end end)
+RunService.Stepped:Connect(function() if Settings.Noclip then pcall(function() local char=getChar(); if char then for _, part in pairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide=false end end end end) end end)
 
 PlayerTab:CreateToggle({Name="Speed Hack", CurrentValue=false, Flag="SpeedHack",
     Callback=function(V) Settings.SpeedHack=V; task.spawn(function() while Settings.SpeedHack do RunService.Heartbeat:Wait()
-        pcall(function() if Humanoid and Humanoid.MoveDirection.Magnitude>0 then HumanoidRootPart.CFrame=HumanoidRootPart.CFrame+Humanoid.MoveDirection*2 end end) end end) end})
+        pcall(function() local hum=getHum(); local hrp=getHRP(); if hum and hrp and hum.MoveDirection.Magnitude>0 then hrp.CFrame=hrp.CFrame+hum.MoveDirection*2 end end) end end) end})
 
 PlayerTab:CreateToggle({Name="God Mode", CurrentValue=false, Flag="P_GodMode",
-    Callback=function(V) Settings.GodMode=V; if V then task.spawn(function() while Settings.GodMode do pcall(function() Humanoid.Health=Humanoid.MaxHealth end); task.wait(0.1) end end) end end})
+    Callback=function(V) Settings.GodMode=V; if V then task.spawn(function() while Settings.GodMode do pcall(function() local hum=getHum(); if hum then hum.Health=hum.MaxHealth end end); task.wait(0.1) end end) end end})
 
 local p_flyBV, p_flyBG
 PlayerTab:CreateToggle({Name="Fly", CurrentValue=false, Flag="P_Fly",
     Callback=function(V) Flying=V; if V then
-        p_flyBV=Instance.new("BodyVelocity"); p_flyBV.MaxForce=Vector3.new(math.huge,math.huge,math.huge); p_flyBV.Velocity=Vector3.zero; p_flyBV.Parent=HumanoidRootPart
-        p_flyBG=Instance.new("BodyGyro"); p_flyBG.MaxTorque=Vector3.new(math.huge,math.huge,math.huge); p_flyBG.P=9e4; p_flyBG.Parent=HumanoidRootPart
+        local hrp=getHRP(); if not hrp then return end
+        p_flyBV=Instance.new("BodyVelocity"); p_flyBV.MaxForce=Vector3.new(math.huge,math.huge,math.huge); p_flyBV.Velocity=Vector3.zero; p_flyBV.Parent=hrp
+        p_flyBG=Instance.new("BodyGyro"); p_flyBG.MaxTorque=Vector3.new(math.huge,math.huge,math.huge); p_flyBG.P=9e4; p_flyBG.Parent=hrp
         task.spawn(function() while Flying do RunService.Heartbeat:Wait()
-            pcall(function() local cam=Workspace.CurrentCamera; if Humanoid.MoveDirection.Magnitude>0 then p_flyBV.Velocity=cam.CFrame.LookVector*50 else p_flyBV.Velocity=Vector3.zero end; p_flyBG.CFrame=cam.CFrame end) end end)
+            pcall(function() local cam=Workspace.CurrentCamera; local hum=getHum()
+                if hum and hum.MoveDirection.Magnitude>0 then p_flyBV.Velocity=cam.CFrame.LookVector*50 else p_flyBV.Velocity=Vector3.zero end; p_flyBG.CFrame=cam.CFrame end) end end)
     else pcall(function() p_flyBV:Destroy() end); pcall(function() p_flyBG:Destroy() end) end end})
 
 -- ═══════════════════════════════════════════════════
@@ -1475,8 +1414,8 @@ VisualsTab:CreateToggle({Name="ESP Players", CurrentValue=false, Flag="ESP",
                     local dl=Instance.new("TextLabel"); dl.Size=UDim2.new(1,0,0.5,0); dl.Position=UDim2.new(0,0,0.5,0); dl.BackgroundTransparency=1
                     dl.TextColor3=Color3.new(1,1,1); dl.TextStrokeTransparency=0.5; dl.TextScaled=true; dl.Font=Enum.Font.Gotham; dl.Parent=bb
                     local hl=Instance.new("Highlight"); hl.Name="DMM_HL"; hl.FillColor=Color3.fromRGB(255,0,0); hl.FillTransparency=0.7; hl.OutlineColor=Color3.fromRGB(255,255,0); hl.Parent=char
-                    task.spawn(function() while char and char.Parent and head and head.Parent do pcall(function()
-                        dl.Text="["..math.floor((HumanoidRootPart.Position-head.Position).Magnitude).."m]" end); task.wait(0.5) end end)
+                    task.spawn(function() while char and char.Parent and head and head.Parent do pcall(function() local hrp=getHRP()
+                        if hrp then dl.Text="["..math.floor((hrp.Position-head.Position).Magnitude).."m]" end end); task.wait(0.5) end end)
                 end
                 if player.Character then onChar(player.Character) end; player.CharacterAdded:Connect(onChar)
             end
@@ -1488,11 +1427,11 @@ VisualsTab:CreateToggle({Name="Fullbright", CurrentValue=false, Flag="Fullbright
     Callback=function(V) if V then Lighting.Brightness=2; Lighting.ClockTime=14; Lighting.FogEnd=100000; Lighting.GlobalShadows=false; Lighting.Ambient=Color3.fromRGB(178,178,178)
     else Lighting.Brightness=1; Lighting.ClockTime=14; Lighting.FogEnd=10000; Lighting.GlobalShadows=true; Lighting.Ambient=Color3.fromRGB(0,0,0) end end})
 
-VisualsTab:CreateButton({Name="✨ Wings", Callback=function() pcall(function()
+VisualsTab:CreateButton({Name="✨ Wings", Callback=function() pcall(function() local char=getChar(); local hrp=getHRP(); if not char or not hrp then return end
     local w1=Instance.new("Part"); w1.Name="DMM_Wing"; w1.Size=Vector3.new(0.2,4,3); w1.Color=Color3.fromRGB(100,0,255); w1.Material=Enum.Material.Neon
-    w1.Transparency=0.3; w1.CanCollide=false; w1.Massless=true; w1.Parent=Character
-    local wd1=Instance.new("Weld"); wd1.Part0=HumanoidRootPart; wd1.Part1=w1; wd1.C0=CFrame.new(-1.5,0.5,0.8)*CFrame.Angles(0,0,math.rad(-30)); wd1.Parent=w1
-    local w2=w1:Clone(); w2.Parent=Character; local wd2=Instance.new("Weld"); wd2.Part0=HumanoidRootPart; wd2.Part1=w2; wd2.C0=CFrame.new(1.5,0.5,0.8)*CFrame.Angles(0,0,math.rad(30)); wd2.Parent=w2 end)
+    w1.Transparency=0.3; w1.CanCollide=false; w1.Massless=true; w1.Parent=char
+    local wd1=Instance.new("Weld"); wd1.Part0=hrp; wd1.Part1=w1; wd1.C0=CFrame.new(-1.5,0.5,0.8)*CFrame.Angles(0,0,math.rad(-30)); wd1.Parent=w1
+    local w2=w1:Clone(); w2.Parent=char; local wd2=Instance.new("Weld"); wd2.Part0=hrp; wd2.Part1=w2; wd2.C0=CFrame.new(1.5,0.5,0.8)*CFrame.Angles(0,0,math.rad(30)); wd2.Parent=w2 end)
     Rayfield:Notify({Title="DMM",Content="Wings added!",Duration=3}) end})
 
 -- ═══════════════════════════════════════════════════
@@ -1501,18 +1440,19 @@ VisualsTab:CreateButton({Name="✨ Wings", Callback=function() pcall(function()
 local TeleportTab = Window:CreateTab("🌀 Teleport", 0)
 
 TeleportTab:CreateDropdown({Name="TP to Player", Options=getPlayerList(), CurrentOption={}, MultiOption=false, Flag="TpPlayer",
-    Callback=function(Opt) pcall(function() local t=Players:FindFirstChild(Opt); if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") then
-        IsTeleporting=true; HumanoidRootPart.CFrame=t.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
+    Callback=function(Opt) pcall(function() local t=Players:FindFirstChild(Opt); local hrp=getHRP()
+        if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") and hrp then
+        IsTeleporting=true; hrp.CFrame=t.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
         Rayfield:Notify({Title="DMM",Content="TP'd to "..Opt,Duration=2}); task.defer(function() task.wait(0.5); IsTeleporting=false end) end end) end})
 
-TeleportTab:CreateButton({Name="TP to Spawn", Callback=function() pcall(function() IsTeleporting=true
+TeleportTab:CreateButton({Name="TP to Spawn", Callback=function() pcall(function() IsTeleporting=true; local hrp=getHRP(); if not hrp then return end
     local sp=Workspace:FindFirstChild("SpawnLocation") or Workspace:FindFirstChildWhichIsA("SpawnLocation",true)
-    if sp then HumanoidRootPart.CFrame=sp.CFrame+Vector3.new(0,5,0) else HumanoidRootPart.CFrame=CFrame.new(0,50,0) end
+    if sp then hrp.CFrame=sp.CFrame+Vector3.new(0,5,0) else hrp.CFrame=CFrame.new(0,50,0) end
     task.defer(function() task.wait(0.5); IsTeleporting=false end) end) end})
 
-TeleportTab:CreateButton({Name="TP Random", Callback=function() pcall(function() local plrs={}
+TeleportTab:CreateButton({Name="TP Random", Callback=function() pcall(function() local hrp=getHRP(); if not hrp then return end; local plrs={}
     for _, p in pairs(Players:GetPlayers()) do if p~=LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then table.insert(plrs,p) end end
-    if #plrs>0 then IsTeleporting=true; local r=plrs[math.random(1,#plrs)]; HumanoidRootPart.CFrame=r.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
+    if #plrs>0 then IsTeleporting=true; local r=plrs[math.random(1,#plrs)]; hrp.CFrame=r.Character.HumanoidRootPart.CFrame+Vector3.new(0,3,0)
         Rayfield:Notify({Title="DMM",Content="TP'd to "..r.Name,Duration=2}); task.defer(function() task.wait(0.5); IsTeleporting=false end) end end) end})
 
 -- ═══════════════════════════════════════════════════
@@ -1526,15 +1466,16 @@ MiscTab:CreateToggle({Name="Anti AFK", CurrentValue=true, Flag="AntiAFK",
 
 MiscTab:CreateToggle({Name="Auto Cash", CurrentValue=false, Flag="AutoCash",
     Callback=function(V) Settings.AutoClaimCash=V; task.spawn(function() while Settings.AutoClaimCash do task.wait(1)
-        pcall(function() for _, obj in pairs(Workspace:GetDescendants()) do if obj:IsA("ProximityPrompt") then fireproximityprompt(obj) end end
+        pcall(function() local hrp=getHRP(); if not hrp then return end
+            for _, obj in pairs(Workspace:GetDescendants()) do if obj:IsA("ProximityPrompt") then fireproximityprompt(obj) end end
             local cr=getCashRemote(); if cr then cr:FireServer() end
             for _, obj in pairs(Workspace:GetDescendants()) do if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("cash") or obj.Name:lower():find("money")) then
-                firetouchinterest(HumanoidRootPart,obj,0); task.wait(0.05); firetouchinterest(HumanoidRootPart,obj,1) end end end) end end) end})
+                firetouchinterest(hrp,obj,0); task.wait(0.05); firetouchinterest(hrp,obj,1) end end end) end end) end})
 
 local clickTpEnabled = false
 MiscTab:CreateToggle({Name="Click TP", CurrentValue=false, Flag="ClickTP", Callback=function(V) clickTpEnabled=V end})
-Mouse.Button1Down:Connect(function() if clickTpEnabled and Mouse.Hit then IsTeleporting=true; HumanoidRootPart.CFrame=Mouse.Hit+Vector3.new(0,3,0)
-    task.defer(function() task.wait(0.5); IsTeleporting=false end) end end)
+Mouse.Button1Down:Connect(function() if clickTpEnabled and Mouse.Hit then local hrp=getHRP(); if hrp then IsTeleporting=true; hrp.CFrame=Mouse.Hit+Vector3.new(0,3,0)
+    task.defer(function() task.wait(0.5); IsTeleporting=false end) end end end)
 
 MiscTab:CreateButton({Name="🔄 Rejoin", Callback=function() game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId,game.JobId,LocalPlayer) end})
 
@@ -1546,8 +1487,8 @@ MiscTab:CreateButton({Name="🌐 Server Hop", Callback=function() pcall(function
 MiscTab:CreateButton({Name="📋 Copy Link", Callback=function() setclipboard("https://www.roblox.com/games/"..game.PlaceId)
     Rayfield:Notify({Title="DMM",Content="Copied!",Duration=2}) end})
 
-MiscTab:CreateButton({Name="❌ Destroy HUB", Callback=function() Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false
-    AntiAllHacksEnabled=false; LoopResetEnabled=false
+MiscTab:CreateButton({Name="❌ Destroy HUB", Callback=function()
+    _dmmHubAlive=false; Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false; AntiAllHacksEnabled=false; LoopResetEnabled=false
     for _, conn in pairs(AntiAllHacksConnections) do pcall(function() conn:Disconnect() end) end; Rayfield:Destroy() end})
 
 -- ═══════════════════════════════════════════════════
@@ -1555,22 +1496,26 @@ MiscTab:CreateButton({Name="❌ Destroy HUB", Callback=function() Flying=false; 
 -- ═══════════════════════════════════════════════════
 
 Workspace.DescendantAdded:Connect(function(obj)
+    if not _dmmHubAlive then return end
     if HS.SuperStrength or Settings.SuperStrength then
         if obj:IsA("BodyPosition") or obj:IsA("BodyVelocity") then
             local f=(HS.StrengthVal or 500)*1000; obj.MaxForce=Vector3.new(f,f,f) end end end)
 
 Workspace.DescendantAdded:Connect(function(obj)
+    if not _dmmHubAlive then return end
     if (HS.AntiExplosion or Settings.AntiExplosion) and obj:IsA("Explosion") then
         obj.BlastPressure=0; obj.BlastRadius=0; obj.DestroyJointRadiusPercent=0 end end)
 
 UserInputService.JumpRequest:Connect(function()
-    if HS.InfJump and Humanoid then Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end)
+    if HS.InfJump then pcall(function() local hum=getHum(); if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end) end end)
 
 RunService.Stepped:Connect(function()
-    if HS.Noclip and Character then for _, p in pairs(Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=false end end end end)
+    if not _dmmHubAlive then return end
+    if HS.Noclip then pcall(function() local char=getChar(); if char then for _, p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=false end end end end) end end)
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    if not _dmmHubAlive then return oldNamecall(self, ...) end
     local method = getnamecallmethod()
     local args = {...}
     if Settings.SuperThrow and method=="FireServer" and self:IsA("RemoteEvent") then
@@ -1595,15 +1540,14 @@ end))
 -- ═══════════════════════════════════════════════════
 Rayfield:Notify({
     Title = "💀 DMM HUB + ⭐ Legend OP",
-    Content = "Loaded! Dark-White Theme 🎨\nAnti All Hacks 10x⚡ + Loop Reset 🔄",
+    Content = "🔧 PROTECTED BUILD!\nДругие скрипты НЕ сломают функции!",
     Duration = 5, Image = 0,
 })
 
 print("═══════════════════════════════════════")
 print("  DMM HUB + ⭐ Legend OP — Loaded!")
-print("  Anti-Grab + Anti-Detected")
-print("  Anti All Hacks v6.9 — 10x TP × 3 потока")
-print("  Loop Reset ⚡ULTRA FAST")
-print("  Dark-White Theme 🎨")
+print("  🔧 PROTECTED BUILD — Anti Script Break")
+print("  getChar() / getHum() / getHRP() геттеры")
+print("  Авто-рефреш каждые 2 сек")
 print("  All tabs — 0 errors")
 print("═══════════════════════════════════════")
