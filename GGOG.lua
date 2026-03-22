@@ -167,7 +167,8 @@ local AntiGrabEnabled      = false
 local AntiDetectedEnabled  = false
 local AntiDetectedCooldown = false
 local AntiAllHacksEnabled     = false
-local AntiAllHacksConnection  = nil
+local AntiAllHacksConnections = {}  -- ★ ТАБЛИЦА для всех соединений
+local LoopResetEnabled        = false  -- ★ НОВАЯ ПЕРЕМЕННАЯ
 local SAFE_POSITION           = CFrame.new(322.31, 9.52, 489.68)
 
 local MovementKeys = {
@@ -565,14 +566,57 @@ local function h_applyGrabEffect(target, effectType)
 end
 
 -- ═══════════════════════════════════════
--- ОКНО
+-- ★★★ ТЁМНО-БЕЛАЯ ТЕМА ★★★
+-- ═══════════════════════════════════════
+local DarkWhiteTheme = {
+    TextFont = "Default",
+    TextColor = Color3.fromRGB(230, 230, 235),
+
+    Background = Color3.fromRGB(18, 18, 22),
+    Topbar = Color3.fromRGB(28, 28, 33),
+    Shadow = Color3.fromRGB(8, 8, 12),
+
+    NotificationBackground = Color3.fromRGB(22, 22, 27),
+    NotificationActionsBackground = Color3.fromRGB(200, 200, 210),
+
+    TabBackground = Color3.fromRGB(35, 35, 40),
+    TabStroke = Color3.fromRGB(55, 55, 60),
+    TabBackgroundSelected = Color3.fromRGB(215, 215, 225),
+    TabTextColor = Color3.fromRGB(195, 195, 200),
+    SelectedTabTextColor = Color3.fromRGB(18, 18, 22),
+
+    ElementBackground = Color3.fromRGB(28, 28, 33),
+    ElementBackgroundHover = Color3.fromRGB(38, 38, 43),
+    SecondaryElementBackground = Color3.fromRGB(22, 22, 27),
+    ElementStroke = Color3.fromRGB(50, 50, 58),
+    SecondaryElementStroke = Color3.fromRGB(40, 40, 48),
+
+    SliderBackground = Color3.fromRGB(35, 35, 40),
+    SliderProgress = Color3.fromRGB(210, 210, 220),
+    SliderStroke = Color3.fromRGB(48, 48, 55),
+
+    ToggleBackground = Color3.fromRGB(30, 30, 35),
+    ToggleEnabled = Color3.fromRGB(220, 220, 230),
+    ToggleDisabled = Color3.fromRGB(70, 70, 78),
+    ToggleEnabledStroke = Color3.fromRGB(230, 230, 240),
+    ToggleDisabledStroke = Color3.fromRGB(85, 85, 92),
+    ToggleEnabledOuterStroke = Color3.fromRGB(110, 110, 118),
+    ToggleDisabledOuterStroke = Color3.fromRGB(60, 60, 68),
+
+    InputBackground = Color3.fromRGB(25, 25, 30),
+    InputStroke = Color3.fromRGB(48, 48, 55),
+    PlaceholderColor = Color3.fromRGB(160, 160, 168),
+}
+
+-- ═══════════════════════════════════════
+-- ОКНО  ★ С ТЁМНО-БЕЛОЙ ТЕМОЙ ★
 -- ═══════════════════════════════════════
 local Window = Rayfield:CreateWindow({
     Name = "💀 DMM HUB — FTAP",
     Icon = 0,
     LoadingTitle = "DMM HUB",
     LoadingSubtitle = "Fling Things and People",
-    Theme = "Default",
+    Theme = DarkWhiteTheme,          -- ★ ТЁМНО-БЕЛАЯ ТЕМА
     DisableRayfieldPrompts = true,
     DisableBuildWarnings = true,
     ConfigurationSaving = {
@@ -632,39 +676,133 @@ LegendTab:CreateSection("💛 Anti All Hacks v6.9")
 
 LegendTab:CreateParagraph({
     Title = "⭐ Anti All Hacks v6.9 Info",
-    Content = "ТП каждый кадр на безопасную позицию.\nX:322.31 Y:9.52 Z:489.68\nRenderStepped = максимальная скорость."
+    Content = "10x ТП КАЖДЫЙ КАДР на безопасную позицию.\nX:322.31 Y:9.52 Z:489.68\n3 потока: RenderStepped + Heartbeat + Stepped\nМАКСИМАЛЬНАЯ скорость телепорта."
 })
 
+-- ★★★ ОБНОВЛЁННЫЙ Anti All Hacks — 10x ТП × 3 RunService потока ★★★
 LegendTab:CreateToggle({
-    Name = "Anti All Hacks v6.9 ⚡ULTRA",
+    Name = "Anti All Hacks v6.9 ⚡ULTRA 10x",
     CurrentValue = false, Flag = "LegendAntiAllHacks",
     Callback = function(Value)
         AntiAllHacksEnabled = Value
         if Value then
-            if AntiAllHacksConnection then AntiAllHacksConnection:Disconnect() end
-            AntiAllHacksConnection = RunService.RenderStepped:Connect(function()
+            -- Очистка старых соединений
+            for _, conn in pairs(AntiAllHacksConnections) do
+                pcall(function() conn:Disconnect() end)
+            end
+            AntiAllHacksConnections = {}
+
+            -- ★ Общая функция — 10 ТП за вызов
+            local function forceTP()
                 if not AntiAllHacksEnabled then return end
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
-                hrp.CFrame = SAFE_POSITION
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            end)
+                for _i = 1, 10 do
+                    hrp.CFrame = SAFE_POSITION
+                    hrp.AssemblyLinearVelocity  = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end
+                -- Убиваем любые навязанные силы
+                for _, child in pairs(hrp:GetChildren()) do
+                    if child:IsA("BodyVelocity") or child:IsA("BodyForce")
+                    or child:IsA("BodyThrust") or child:IsA("BodyAngularVelocity")
+                    or child:IsA("BodyPosition") or child:IsA("BodyGyro")
+                    or child:IsA("LinearVelocity") or child:IsA("VectorForce") then
+                        child:Destroy()
+                    end
+                end
+            end
+
+            -- ★ Поток 1 — RenderStepped (перед рендером, самый быстрый)
+            table.insert(AntiAllHacksConnections,
+                RunService.RenderStepped:Connect(forceTP)
+            )
+
+            -- ★ Поток 2 — Heartbeat (после физики)
+            table.insert(AntiAllHacksConnections,
+                RunService.Heartbeat:Connect(forceTP)
+            )
+
+            -- ★ Поток 3 — Stepped (перед физикой)
+            table.insert(AntiAllHacksConnections,
+                RunService.Stepped:Connect(function() forceTP() end)
+            )
+
             Rayfield:Notify({
                 Title = "⭐ Legend OP",
-                Content = "Anti All Hacks v6.9 АКТИВИРОВАН!\nТП каждый кадр → X:322 Y:9.5 Z:489",
-                Duration = 3, Image = 4483362458
+                Content = "Anti All Hacks v6.9 ⚡ULTRA\n10x ТП × 3 потока = 30 ТП/кадр!\n→ X:322 Y:9.5 Z:489",
+                Duration = 4, Image = 4483362458
             })
         else
-            if AntiAllHacksConnection then
-                AntiAllHacksConnection:Disconnect()
-                AntiAllHacksConnection = nil
+            for _, conn in pairs(AntiAllHacksConnections) do
+                pcall(function() conn:Disconnect() end)
             end
+            AntiAllHacksConnections = {}
             Rayfield:Notify({
                 Title = "⭐ Legend OP",
                 Content = "Anti All Hacks v6.9 выключен.",
+                Duration = 2, Image = 4483362458
+            })
+        end
+    end,
+})
+
+-- ★★★ НОВЫЙ: LOOP RESET ★★★
+LegendTab:CreateSection("💛 Loop Reset ⚡")
+
+LegendTab:CreateParagraph({
+    Title = "⭐ Loop Reset Info",
+    Content = "Ультра-быстрый ресет персонажа.\nМгновенная смерть каждый цикл.\nПерсонаж респавнится и снова умирает."
+})
+
+LegendTab:CreateToggle({
+    Name = "🔄 Loop Reset ⚡ULTRA FAST",
+    CurrentValue = false, Flag = "LegendLoopReset",
+    Callback = function(Value)
+        LoopResetEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "⭐ Legend OP",
+                Content = "Loop Reset АКТИВИРОВАН!\n⚡ Ультра-быстрый ресет.",
+                Duration = 3, Image = 4483362458
+            })
+            task.spawn(function()
+                while LoopResetEnabled do
+                    pcall(function()
+                        local char = LocalPlayer.Character
+                        if char then
+                            local hum = char:FindFirstChildOfClass("Humanoid")
+                            if hum and hum.Health > 0 then
+                                hum.Health = 0
+                            end
+                        end
+                    end)
+                    -- Ждём респавна
+                    if LoopResetEnabled then
+                        local newChar = LocalPlayer.Character
+                        if newChar then
+                            local newHum = newChar:FindFirstChildOfClass("Humanoid")
+                            if newHum and newHum.Health <= 0 then
+                                -- Ждём пока персонаж жив (респавн)
+                                local waited = 0
+                                repeat
+                                    task.wait(0.05)
+                                    waited = waited + 0.05
+                                    newChar = LocalPlayer.Character
+                                    newHum = newChar and newChar:FindFirstChildOfClass("Humanoid")
+                                until (newHum and newHum.Health > 0) or waited > 10 or not LoopResetEnabled
+                            end
+                        end
+                        task.wait(0.05) -- минимальная задержка
+                    end
+                end
+            end)
+        else
+            Rayfield:Notify({
+                Title = "⭐ Legend OP",
+                Content = "Loop Reset выключен.",
                 Duration = 2, Image = 4483362458
             })
         end
@@ -1123,8 +1261,8 @@ HomeTab:CreateButton({Name="📋 Copy Game Link", Callback=function()
     Rayfield:Notify({Title="DMM",Content="Link copied!",Duration=2}) end})
 
 HomeTab:CreateButton({Name="❌ Destroy DMM HUB", Callback=function()
-    Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false; AntiAllHacksEnabled=false
-    if AntiAllHacksConnection then AntiAllHacksConnection:Disconnect() end; Rayfield:Destroy() end})
+    Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false; AntiAllHacksEnabled=false; LoopResetEnabled=false
+    for _, conn in pairs(AntiAllHacksConnections) do pcall(function() conn:Disconnect() end) end; Rayfield:Destroy() end})
 
 -- ═══════════════════════════════════════════════════
 -- TAB: 🦠 BLOBMEN
@@ -1409,7 +1547,8 @@ MiscTab:CreateButton({Name="📋 Copy Link", Callback=function() setclipboard("h
     Rayfield:Notify({Title="DMM",Content="Copied!",Duration=2}) end})
 
 MiscTab:CreateButton({Name="❌ Destroy HUB", Callback=function() Flying=false; AntiGrabEnabled=false; AntiDetectedEnabled=false
-    AntiAllHacksEnabled=false; if AntiAllHacksConnection then AntiAllHacksConnection:Disconnect() end; Rayfield:Destroy() end})
+    AntiAllHacksEnabled=false; LoopResetEnabled=false
+    for _, conn in pairs(AntiAllHacksConnections) do pcall(function() conn:Disconnect() end) end; Rayfield:Destroy() end})
 
 -- ═══════════════════════════════════════════════════
 -- GLOBAL HOOKS
@@ -1456,12 +1595,15 @@ end))
 -- ═══════════════════════════════════════════════════
 Rayfield:Notify({
     Title = "💀 DMM HUB + ⭐ Legend OP",
-    Content = "Loaded! All features active! 🎉",
+    Content = "Loaded! Dark-White Theme 🎨\nAnti All Hacks 10x⚡ + Loop Reset 🔄",
     Duration = 5, Image = 0,
 })
 
 print("═══════════════════════════════════════")
 print("  DMM HUB + ⭐ Legend OP — Loaded!")
-print("  Anti-Grab + Anti-Detected + Anti All Hacks v6.9")
+print("  Anti-Grab + Anti-Detected")
+print("  Anti All Hacks v6.9 — 10x TP × 3 потока")
+print("  Loop Reset ⚡ULTRA FAST")
+print("  Dark-White Theme 🎨")
 print("  All tabs — 0 errors")
 print("═══════════════════════════════════════")
