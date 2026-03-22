@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║              DMM HUB — Fling Things and People          ║
--- ║           + ⭐ Legend OP (Anti-Grab & Anti-Detected)     ║
+-- ║           + ⭐ L.egend OP (Anti-Grab & Anti-Detected)     ║
 -- ║                Built on Rayfield Interface               ║
 -- ╚══════════════════════════════════════════════════════════╝
 
