@@ -687,7 +687,7 @@ Tab:CreateToggle({
 -- LOADED
 -- ═══════════════════════════════════════
 Rayfield:Notify({
-    Title = "💀 DMM HUB Features",
+    Title = "Totem hub anti all hacks v4.2 Pro⭐",
     Content = "✈️Fly 🛡️GodMode 🏃Speed\n🛡️AntiGrab 🛡️AntiDetected\n💛AntiAll6.9 🔄AutoReset\n👑Pro Anti All\nВСЁ ЗАГРУЖЕНО!",
     Duration = 5, Image = 0,
 })
