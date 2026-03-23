@@ -1,9 +1,10 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         DMM HUB — DELTA FIX + ENHANCED PRO ANTI ALL    ║
--- ║  Fly | God Mode | Speed | Anti-Grab (WORKING)           ║
--- ║  Anti Detected | Anti All 6.9 | Auto Reset              ║
--- ║  👑 Pro Anti All v2 — ULTRA IMMOVABLE + ANIM DEFENSE    ║
--- ║  🎨 Dark-White Theme                                     ║
+-- ║         DMM HUB — Pro Anti All v3 (FIXED)               ║
+-- ║  👑 РЕАЛЬНО РАБОТАЕТ — другие ВИДЯТ тебя на месте       ║
+-- ║  ❌ Убран Anchored (ломал репликацию)                    ║
+-- ║  ✅ BodyPosition/BodyGyro с бесконечной силой            ║
+-- ║  ✅ Анимации реально блокируются                         ║
+-- ║  🎨 Dark-White Theme | Delta Compatible                  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- ═══════ БЕЗОПАСНАЯ ЗАГРУЗКА RAYFIELD ═══════
@@ -12,53 +13,50 @@ local success, err = pcall(function()
     Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 end)
 if not success or not Rayfield then
-    local success2, err2 = pcall(function()
+    pcall(function()
         Rayfield = loadstring(game:HttpGet(
             'https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'
         ))()
     end)
-    if not success2 or not Rayfield then
-        local success3, err3 = pcall(function()
-            Rayfield = loadstring(game:HttpGet(
-                'https://raw.githubusercontent.com/shlexware/Rayfield/main/source'
-            ))()
-        end)
-        if not success3 or not Rayfield then
-            warn("❌ Rayfield не загрузился: "..tostring(err))
-            pcall(function()
-                game:GetService("StarterGui"):SetCore("SendNotification", {
-                    Title = "❌ DMM HUB",
-                    Text = "Rayfield не загрузился! Проверь интернет.",
-                    Duration = 10
-                })
-            end)
-            return
-        end
-    end
+end
+if not Rayfield then
+    pcall(function()
+        Rayfield = loadstring(game:HttpGet(
+            'https://raw.githubusercontent.com/shlexware/Rayfield/main/source'
+        ))()
+    end)
+end
+if not Rayfield then
+    warn("❌ Rayfield не загрузился!")
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "❌ DMM HUB",
+            Text = "Rayfield не загрузился!",
+            Duration = 10
+        })
+    end)
+    return
 end
 print("✅ Rayfield загружен!")
 
 -- ═══════ СЕРВИСЫ ═══════
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local Workspace         = game:GetService("Workspace")
-local UserInputService  = game:GetService("UserInputService")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local Workspace        = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer      = Players.LocalPlayer
 
-local LocalPlayer = Players.LocalPlayer
-
--- ═══════ ЗАЩИЩЁННЫЕ ГЕТТЕРЫ ═══════
+-- ═══════ ГЕТТЕРЫ ═══════
 local function getChar()
     return LocalPlayer and LocalPlayer.Character
 end
 local function getHum()
     local c = getChar()
-    if not c then return nil end
-    return c:FindFirstChildOfClass("Humanoid")
+    return c and c:FindFirstChildOfClass("Humanoid")
 end
 local function getHRP()
     local c = getChar()
-    if not c then return nil end
-    return c:FindFirstChild("HumanoidRootPart")
+    return c and c:FindFirstChild("HumanoidRootPart")
 end
 
 -- ═══════ ПЕРЕМЕННЫЕ ═══════
@@ -73,20 +71,18 @@ local AntiAllHacksEnabled     = false
 local AntiAllHacksConnections = {}
 local ProAntiAllEnabled       = false
 local ProAntiAllConnections   = {}
-local LoopResetEnabled        = false
-local GodModeEnabled          = false
-local SpeedHackEnabled        = false
-local FlySpeed                = 50
-local SAFE_POSITION           = CFrame.new(322.31, 9.52, 489.68)
-local _alive                  = true
+local LoopResetEnabled     = false
+local GodModeEnabled       = false
+local SpeedHackEnabled     = false
+local FlySpeed             = 50
+local SAFE_POSITION        = CFrame.new(322.31, 9.52, 489.68)
+local _alive               = true
 
--- ═══════ НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ PRO ANTI ALL v2 ═══════
-local ProAnimBlockerConnection  = nil
-local ProAnimCycleThread        = nil
-local ProSeatBreakerThread      = nil
-local ProStateForceThread       = nil
-local ProNetworkSpoofThread     = nil
-local ProLastCharSetup          = nil
+-- Имена наших объектов (чтобы не удалять свои)
+local OUR_BP_NAME = "_DMM_PRO_BP"
+local OUR_BG_NAME = "_DMM_PRO_BG"
+local OUR_FLY_BV  = "_DMM_FlyBV"
+local OUR_FLY_BG  = "_DMM_FlyBG"
 
 local MovementKeys = {
     [Enum.KeyCode.W] = true, [Enum.KeyCode.A] = true,
@@ -102,6 +98,82 @@ pcall(function()
         end
     end)
 end)
+
+-- ═══════ БЕЗОПАСНЫЕ / ОПАСНЫЕ АНИМАЦИИ ═══════
+local SAFE_ANIM_KEYWORDS = {
+    "idle", "walk", "run", "jump", "fall", "climb",
+    "sit", "swim", "tool", "wave", "point", "dance",
+    "cheer", "laugh", "tilt", "movedirection", "land"
+}
+
+local GRAB_ANIM_KEYWORDS = {
+    "grab", "hold", "carry", "punch", "stun", "ragdoll",
+    "knock", "sleep", "drag", "pull", "throw", "slam",
+    "choke", "bind", "tie", "capture", "arrest", "cuff",
+    "kill", "eat", "swallow", "consume", "caught", "trapped",
+    "picked", "lifted", "fling", "toss", "crush", "blob",
+    "devour", "absorb", "digest", "vore", "mouth", "tongue",
+    "bite", "chew", "gulp", "inhale", "suck", "squeeze",
+    "wrap", "coil", "engulf", "envelop", "smother",
+    "kidnap", "abduct", "snatch", "seize", "yank",
+    "attack", "strike", "hit", "smash", "pummel",
+    "kick", "stomp", "trample", "flatten", "squish"
+}
+
+local function isAnimSafe(name)
+    local ln = string.lower(name or "")
+    if ln == "" then return false end
+    for _, s in ipairs(SAFE_ANIM_KEYWORDS) do
+        if string.find(ln, s) then return true end
+    end
+    return false
+end
+
+local function isAnimGrab(name)
+    local ln = string.lower(name or "")
+    for _, kw in ipairs(GRAB_ANIM_KEYWORDS) do
+        if string.find(ln, kw) then return true end
+    end
+    return false
+end
+
+-- ═══════ Проверка: наш ли это объект? ═══════
+local function isOurObject(obj)
+    local n = obj.Name
+    return n == OUR_BP_NAME or n == OUR_BG_NAME
+        or n == OUR_FLY_BV or n == OUR_FLY_BG
+end
+
+-- ═══════ Типы сил для удаления ═══════
+local FORCE_TYPES = {
+    "BodyVelocity", "BodyForce", "BodyThrust",
+    "BodyAngularVelocity", "BodyPosition", "BodyGyro",
+    "LinearVelocity", "VectorForce", "AlignPosition",
+    "AlignOrientation", "LineForce", "Torque"
+}
+
+local function isForceType(obj)
+    for _, ft in ipairs(FORCE_TYPES) do
+        if obj:IsA(ft) then return true end
+    end
+    return false
+end
+
+-- ═══════ Типы связей ═══════
+local CONSTRAINT_TYPES = {
+    "Weld", "WeldConstraint", "RigidConstraint",
+    "BallSocketConstraint", "HingeConstraint",
+    "RopeConstraint", "SpringConstraint", "RodConstraint",
+    "CylindricalConstraint", "PrismaticConstraint",
+    "UniversalConstraint", "NoCollisionConstraint"
+}
+
+local function isConstraintType(obj)
+    for _, ct in ipairs(CONSTRAINT_TYPES) do
+        if obj:IsA(ct) then return true end
+    end
+    return false
+end
 
 -- ═══════ ЗАПИСЬ ИСТОРИИ ПОЗИЦИЙ ═══════
 RunService.Heartbeat:Connect(function()
@@ -151,10 +223,7 @@ function TeleportBack(seconds)
         hrp.AssemblyAngularVelocity = Vector3.zero
         pcall(function()
             for _, child in pairs(hrp:GetChildren()) do
-                if child:IsA("BodyVelocity") or child:IsA("BodyForce")
-                or child:IsA("BodyThrust") or child:IsA("BodyAngularVelocity")
-                or child:IsA("BodyPosition") or child:IsA("BodyGyro")
-                or child:IsA("LinearVelocity") or child:IsA("VectorForce") then
+                if isForceType(child) and not isOurObject(child) then
                     child:Destroy()
                 end
             end
@@ -177,9 +246,8 @@ function TeleportBack(seconds)
             local hum = getHum()
             if hum then
                 hum.PlatformStand = false
-                if hum.SeatPart and not hum.SeatPart:IsDescendantOf(getChar()) then
-                    hum.Jump = true
-                end
+                hum.Sit = false
+                hum.Jump = true
                 local animator = hum:FindFirstChildOfClass("Animator")
                 if animator then
                     for _, track in pairs(animator:GetPlayingAnimationTracks()) do
@@ -212,26 +280,8 @@ local function SetupAntiGrabAnimTracker(char)
         if timeSinceInput > 0.15 then
             local animName = ""
             pcall(function() animName = track.Animation and track.Animation.Name or "" end)
-            local lowerName = string.lower(animName)
-            local safeAnimations = {
-                "idle","walk","run","jump","fall","climb",
-                "sit","swim","tool","wave","point","dance",
-                "cheer","laugh","tilt","movedirection"
-            }
-            local isSafe = false
-            for _, safeName in ipairs(safeAnimations) do
-                if string.find(lowerName, safeName) then isSafe = true; break end
-            end
-            local grabKeywords = {
-                "grab","hold","carry","punch","stun","ragdoll","knock","sleep",
-                "drag","pull","throw","slam","choke","bind","tie","capture",
-                "arrest","cuff","kill","eat","swallow","consume","caught",
-                "trapped","picked","lifted","fling","toss","crush"
-            }
-            local isGrab = false
-            for _, keyword in ipairs(grabKeywords) do
-                if string.find(lowerName, keyword) then isGrab = true; break end
-            end
+            local isSafe = isAnimSafe(animName)
+            local isGrab = isAnimGrab(animName)
             local suspiciousPriority = (
                 track.Priority == Enum.AnimationPriority.Action
                 or track.Priority == Enum.AnimationPriority.Action2
@@ -274,8 +324,7 @@ end
 
 -- ═══════ ANTI-GRAB: HEARTBEAT ═══════
 RunService.Heartbeat:Connect(function()
-    if not _alive then return end
-    if not AntiGrabEnabled then return end
+    if not _alive or not AntiGrabEnabled then return end
     pcall(function()
         local char = getChar()
         local hum  = getHum()
@@ -292,17 +341,15 @@ RunService.Heartbeat:Connect(function()
         end
         if hum and hum.SeatPart then
             if not hum.SeatPart:IsDescendantOf(char) then hum.Jump = true end
-            if hum.SeatPart.Parent and hum.SeatPart.Parent.Name:lower():find("blob") then
+            if hum.SeatPart.Parent
+            and hum.SeatPart.Parent.Name:lower():find("blob") then
                 hum.Jump = true
             end
         end
         if hum then hum.PlatformStand = false end
         if not Flying and not IsTeleporting then
             for _, v in pairs(hrp:GetChildren()) do
-                if v:IsA("BodyVelocity") or v:IsA("BodyForce")
-                or v:IsA("BodyThrust") or v:IsA("BodyAngularVelocity")
-                or v:IsA("BodyPosition") or child:IsA("BodyGyro")
-                or v:IsA("LinearVelocity") or v:IsA("VectorForce") then
+                if isForceType(v) and not isOurObject(v) then
                     v:Destroy()
                 end
             end
@@ -316,8 +363,7 @@ end)
 
 -- ═══════ ANTI DETECTED HEARTBEAT ═══════
 RunService.Heartbeat:Connect(function()
-    if not _alive then return end
-    if not AntiDetectedEnabled then return end
+    if not _alive or not AntiDetectedEnabled then return end
     if Flying or IsTeleporting or AntiDetectedCooldown then return end
     local hrp = getHRP()
     if not hrp then return end
@@ -333,238 +379,16 @@ RunService.Heartbeat:Connect(function()
             AntiDetectedCooldown = true
             local ok = TeleportBack(7)
             if ok then
-                pcall(function()
-                    Rayfield:Notify({
-                        Title = "🛡️ Anti Detected",
-                        Content = "⚡ Возврат на 7 сек!",
-                        Duration = 3, Image = 4483362458
-                    })
-                end)
+                pcall(function() Rayfield:Notify({
+                    Title = "🛡️ Anti Detected",
+                    Content = "⚡ Возврат на 7 сек!",
+                    Duration = 3, Image = 4483362458
+                }) end)
             end
             task.defer(function() task.wait(0.5); AntiDetectedCooldown = false end)
         end
     end)
 end)
-
--- ═══════════════════════════════════════════════════════════
--- 👑 PRO ANTI ALL v2 — ФУНКЦИИ ЗАЩИТЫ ОТ BLOBMAN GRAB
--- ═══════════════════════════════════════════════════════════
-
--- Список ВСЕХ grab/hostile анимаций (расширенный)
-local GRAB_ANIM_KEYWORDS = {
-    "grab", "hold", "carry", "punch", "stun", "ragdoll",
-    "knock", "sleep", "drag", "pull", "throw", "slam",
-    "choke", "bind", "tie", "capture", "arrest", "cuff",
-    "kill", "eat", "swallow", "consume", "caught", "trapped",
-    "picked", "lifted", "fling", "toss", "crush", "blob",
-    "devour", "absorb", "digest", "vore", "mouth", "tongue",
-    "bite", "chew", "gulp", "inhale", "suck", "squeeze",
-    "wrap", "coil", "engulf", "envelop", "smother",
-    "kidnap", "abduct", "snatch", "seize", "yank",
-    "attack", "strike", "hit", "smash", "pummel",
-    "kick", "stomp", "trample", "flatten", "squish"
-}
-
--- Безопасные анимации (НЕ останавливать)
-local SAFE_ANIM_KEYWORDS = {
-    "idle", "walk", "run", "jump", "fall", "climb",
-    "sit", "swim", "tool", "wave", "point", "dance",
-    "cheer", "laugh", "tilt", "movedirection", "land"
-}
-
-local function isAnimSafe(animName)
-    local ln = string.lower(animName or "")
-    if ln == "" then return false end
-    for _, s in ipairs(SAFE_ANIM_KEYWORDS) do
-        if string.find(ln, s) then return true end
-    end
-    return false
-end
-
-local function isAnimGrab(animName)
-    local ln = string.lower(animName or "")
-    for _, kw in ipairs(GRAB_ANIM_KEYWORDS) do
-        if string.find(ln, kw) then return true end
-    end
-    return false
-end
-
--- ══════════════════════════════════════════════════════
--- 🔒 [PRO] Функция 1: Реалтайм блокер AnimationPlayed
--- Ловит КАЖДУЮ анимацию в момент запуска и убивает
--- ══════════════════════════════════════════════════════
-local function SetupProAnimBlocker(char)
-    if not char then return end
-    -- Отключаем старый коннект
-    if ProAnimBlockerConnection then
-        pcall(function() ProAnimBlockerConnection:Disconnect() end)
-        ProAnimBlockerConnection = nil
-    end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then hum = char:WaitForChild("Humanoid", 5) end
-    if not hum then return end
-
-    local animator = hum:FindFirstChildOfClass("Animator")
-    if not animator then animator = hum:WaitForChild("Animator", 3) end
-    if not animator then return end
-
-    ProAnimBlockerConnection = animator.AnimationPlayed:Connect(function(track)
-        if not ProAntiAllEnabled then return end
-
-        local animName = ""
-        pcall(function()
-            animName = track.Animation and track.Animation.Name or ""
-        end)
-
-        local animId = ""
-        pcall(function()
-            animId = track.Animation and track.Animation.AnimationId or ""
-        end)
-
-        local safe = isAnimSafe(animName)
-        local grab = isAnimGrab(animName)
-
-        -- Подозрительный приоритет (Action и выше)
-        local suspiciousPriority = (
-            track.Priority == Enum.AnimationPriority.Action
-            or track.Priority == Enum.AnimationPriority.Action2
-            or track.Priority == Enum.AnimationPriority.Action3
-            or track.Priority == Enum.AnimationPriority.Action4
-        )
-
-        -- 🔴 УБИВАЕМ: если это граб, или подозрительная + не безопасная
-        if grab or (suspiciousPriority and not safe) or (not safe and animName == "") then
-            -- Мгновенный стоп
-            track:Stop(0)
-
-            -- Дополнительно: стоп через кадр (на случай если переиграют)
-            task.defer(function()
-                pcall(function() track:Stop(0) end)
-            end)
-            task.delay(0.05, function()
-                pcall(function() track:Stop(0) end)
-            end)
-            task.delay(0.1, function()
-                pcall(function() track:Stop(0) end)
-            end)
-
-            -- Принудительный ТП обратно
-            pcall(function()
-                local hrp = getHRP()
-                if hrp then
-                    hrp.CFrame = SAFE_POSITION
-                    hrp.Anchored = true
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                end
-            end)
-        end
-    end)
-end
-
--- ══════════════════════════════════════════════════════
--- 🔒 [PRO] Функция 2: Полное уничтожение ВСЕХ связей
--- Расширенный список: Weld, Constraint, Attachment и тд
--- ══════════════════════════════════════════════════════
-local function DestroyAllExternalConnections(char)
-    if not char then return end
-
-    -- Все типы связей которые могут использоваться для граба
-    local connectionTypes = {
-        "Weld", "WeldConstraint", "RigidConstraint",
-        "BallSocketConstraint", "HingeConstraint",
-        "RopeConstraint", "SpringConstraint", "RodConstraint",
-        "CylindricalConstraint", "PrismaticConstraint",
-        "UniversalConstraint", "NoCollisionConstraint"
-    }
-
-    for _, v in pairs(char:GetDescendants()) do
-        -- Уничтожаем связи с внешними объектами
-        local isConnection = false
-        for _, typeName in ipairs(connectionTypes) do
-            if v:IsA(typeName) then isConnection = true; break end
-        end
-
-        if isConnection then
-            local p0, p1 = nil, nil
-            pcall(function() p0 = v.Part0 end)
-            pcall(function() p1 = v.Part1 end)
-
-            if p0 and p1 then
-                if not p0:IsDescendantOf(char) or not p1:IsDescendantOf(char) then
-                    pcall(function() v:Destroy() end)
-                end
-            end
-
-            -- Также проверяем Attachment0/Attachment1 для Constraint
-            local a0, a1 = nil, nil
-            pcall(function() a0 = v.Attachment0 end)
-            pcall(function() a1 = v.Attachment1 end)
-
-            if a0 and a1 then
-                local a0Parent = a0.Parent
-                local a1Parent = a1.Parent
-                if a0Parent and a1Parent then
-                    if not a0Parent:IsDescendantOf(char)
-                    or not a1Parent:IsDescendantOf(char) then
-                        pcall(function() v:Destroy() end)
-                    end
-                end
-            end
-        end
-    end
-
-    -- Уничтожаем внешние Weld/Constraint которые ССЫЛАЮТСЯ на наши части
-    -- (находятся вне нашего персонажа но привязаны к нам)
-    pcall(function()
-        for _, v in pairs(Workspace:GetDescendants()) do
-            if v:IsDescendantOf(char) then continue end
-
-            local isConn = v:IsA("Weld") or v:IsA("WeldConstraint")
-                or v:IsA("RigidConstraint") or v:IsA("BallSocketConstraint")
-
-            if isConn then
-                local p0, p1 = nil, nil
-                pcall(function() p0 = v.Part0 end)
-                pcall(function() p1 = v.Part1 end)
-
-                if (p0 and p0:IsDescendantOf(char))
-                or (p1 and p1:IsDescendantOf(char)) then
-                    pcall(function() v:Destroy() end)
-                end
-            end
-        end
-    end)
-end
-
--- ══════════════════════════════════════════════════════
--- 🔒 [PRO] Функция 3: Убийство ВСЕХ сил со ВСЕХ частей
--- ══════════════════════════════════════════════════════
-local function DestroyAllForces(char)
-    if not char then return end
-    local forceTypes = {
-        "BodyVelocity", "BodyForce", "BodyThrust",
-        "BodyAngularVelocity", "BodyPosition", "BodyGyro",
-        "LinearVelocity", "VectorForce", "AlignPosition",
-        "AlignOrientation", "LineForce", "Torque"
-    }
-    for _, part in pairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.AssemblyLinearVelocity = Vector3.zero
-            part.AssemblyAngularVelocity = Vector3.zero
-            part.Massless = true
-            for _, child in pairs(part:GetChildren()) do
-                for _, ft in ipairs(forceTypes) do
-                    if child:IsA(ft) then
-                        pcall(function() child:Destroy() end)
-                        break
-                    end
-                end
-            end
-        end
-    end
-end
 
 -- ═══════════════════════════════════════
 -- 🎨 ТЁМНО-БЕЛАЯ ТЕМА
@@ -605,26 +429,23 @@ local DarkWhiteTheme = {
 -- ОКНО RAYFIELD
 -- ═══════════════════════════════════════
 local Window = Rayfield:CreateWindow({
-    Name = "💀 DMM HUB — Pro Features v2",
+    Name = "💀 DMM HUB — v3 FIXED",
     Icon = 0,
-    LoadingTitle = "💀 DMM HUB",
-    LoadingSubtitle = "Loading Pro Features...",
+    LoadingTitle = "💀 DMM HUB v3",
+    LoadingSubtitle = "FIXED — Теперь другие видят!",
     Theme = DarkWhiteTheme,
     DisableRayfieldPrompts = true,
     DisableBuildWarnings = true,
     ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "DMM_HUB",
-        FileName = "ProFeat_Config"
+        Enabled = true, FolderName = "DMM_HUB",
+        FileName = "v3_Config"
     },
     KeySystem = false,
 })
 
 local Tab = Window:CreateTab("⭐ Features", 4483362458)
 
--- ╔═══════════════════════════╗
--- ║      ✈️ ЛЕТАНИЕ (FLY)     ║
--- ╚═══════════════════════════╝
+-- ═══════ FLY ═══════
 Tab:CreateSection("✈️ Летание (Fly)")
 
 local flyBV, flyBG
@@ -639,12 +460,12 @@ Tab:CreateToggle({
             if not hrp then Flying = false; return end
             pcall(function()
                 flyBV = Instance.new("BodyVelocity")
-                flyBV.Name = "_DMM_FlyBV"
+                flyBV.Name = OUR_FLY_BV
                 flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
                 flyBV.Velocity = Vector3.zero
                 flyBV.Parent = hrp
                 flyBG = Instance.new("BodyGyro")
-                flyBG.Name = "_DMM_FlyBG"
+                flyBG.Name = OUR_FLY_BG
                 flyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
                 flyBG.P = 9e4
                 flyBG.Parent = hrp
@@ -679,9 +500,7 @@ Tab:CreateSlider({
     Callback = function(V) FlySpeed = V end,
 })
 
--- ╔═══════════════════════════╗
--- ║      🛡️ GOD MODE          ║
--- ╚═══════════════════════════╝
+-- ═══════ GOD MODE ═══════
 Tab:CreateSection("🛡️ God Mode")
 
 Tab:CreateToggle({
@@ -701,9 +520,7 @@ Tab:CreateToggle({
     end,
 })
 
--- ╔═══════════════════════════╗
--- ║       🏃 SPEED            ║
--- ╚═══════════════════════════╝
+-- ═══════ SPEED ═══════
 Tab:CreateSection("🏃 Speed")
 
 Tab:CreateSlider({
@@ -736,72 +553,52 @@ Tab:CreateToggle({
     end,
 })
 
--- ╔═══════════════════════════════════════╗
--- ║   🛡️ ANTI-GRAB [WORKING]             ║
--- ╚═══════════════════════════════════════╝
+-- ═══════ ANTI-GRAB ═══════
 Tab:CreateSection("🛡️ Anti-Grab [WORKING]")
 
-Tab:CreateParagraph({
-    Title = "⭐ Anti-Grab Info",
-    Content = "Трекер grab-анимаций + откат 3 сек\nРазрыв Weld + удаление сил\nВыход из сидений + анти-ragdoll"
-})
-
 Tab:CreateToggle({
-    Name = "🛡️ Anti-Grab [WORKING] 🔴OP",
+    Name = "🛡️ Anti-Grab 🔴OP",
     CurrentValue = false, Flag = "AntiGrab",
-    Callback = function(Value)
-        AntiGrabEnabled = Value
-        if Value then
-            PositionHistory = {}
-            pcall(function() Rayfield:Notify({
-                Title = "⭐ Anti-Grab", Content = "АКТИВИРОВАН!",
-                Duration = 3, Image = 4483362458
-            }) end)
-        else
-            pcall(function() Rayfield:Notify({
-                Title = "⭐ Anti-Grab", Content = "Выключен.",
-                Duration = 2, Image = 4483362458
-            }) end)
-        end
+    Callback = function(V)
+        AntiGrabEnabled = V
+        if V then PositionHistory = {} end
+        pcall(function() Rayfield:Notify({
+            Title = "⭐ Anti-Grab",
+            Content = V and "АКТИВИРОВАН!" or "Выключен.",
+            Duration = 2, Image = 4483362458
+        }) end)
     end,
 })
 
--- ╔═══════════════════════════════════════╗
--- ║   🛡️ ANTI DETECTED [BETA]            ║
--- ╚═══════════════════════════════════════╝
+-- ═══════ ANTI DETECTED ═══════
 Tab:CreateSection("🛡️ Anti Detected [BETA]")
 
 Tab:CreateToggle({
     Name = "Anti Detected [BETA]",
     CurrentValue = false, Flag = "AntiDetected",
-    Callback = function(Value)
-        AntiDetectedEnabled = Value
-        if Value then
-            PositionHistory = {}
-            pcall(function() Rayfield:Notify({
-                Title = "⭐ Anti Detected", Content = "АКТИВИРОВАН!",
-                Duration = 3, Image = 4483362458
-            }) end)
-        end
+    Callback = function(V)
+        AntiDetectedEnabled = V
+        if V then PositionHistory = {} end
     end,
 })
 
--- ╔═══════════════════════════════════════╗
--- ║   💛 ANTI ALL HACKS v6.9             ║
--- ╚═══════════════════════════════════════╝
+-- ═══════ ANTI ALL v6.9 ═══════
 Tab:CreateSection("💛 Anti All Hacks v6.9")
 
 Tab:CreateToggle({
-    Name = "Anti All Hacks v6.9 ⚡ULTRA 10x",
+    Name = "Anti All v6.9 ⚡10x",
     CurrentValue = false, Flag = "AntiAllHacks",
-    Callback = function(Value)
-        AntiAllHacksEnabled = Value
-        if Value then
-            for _, c in pairs(AntiAllHacksConnections) do pcall(function() c:Disconnect() end) end
+    Callback = function(V)
+        AntiAllHacksEnabled = V
+        if V then
+            for _, c in pairs(AntiAllHacksConnections) do
+                pcall(function() c:Disconnect() end)
+            end
             AntiAllHacksConnections = {}
             local function forceTP()
                 if not AntiAllHacksEnabled then return end
-                local hrp = getHRP(); if not hrp then return end
+                local hrp = getHRP()
+                if not hrp then return end
                 pcall(function()
                     for _ = 1, 10 do
                         hrp.CFrame = SAFE_POSITION
@@ -809,154 +606,310 @@ Tab:CreateToggle({
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
                     for _, child in pairs(hrp:GetChildren()) do
-                        if child:IsA("BodyVelocity") or child:IsA("BodyForce")
-                        or child:IsA("BodyThrust") or child:IsA("BodyAngularVelocity")
-                        or child:IsA("BodyPosition") or child:IsA("BodyGyro")
-                        or child:IsA("LinearVelocity") or child:IsA("VectorForce") then
+                        if isForceType(child) and not isOurObject(child) then
                             child:Destroy()
                         end
                     end
                 end)
             end
-            table.insert(AntiAllHacksConnections, RunService.RenderStepped:Connect(forceTP))
-            table.insert(AntiAllHacksConnections, RunService.Heartbeat:Connect(forceTP))
-            table.insert(AntiAllHacksConnections, RunService.Stepped:Connect(function() forceTP() end))
-            pcall(function() Rayfield:Notify({
-                Title = "⭐ Anti All v6.9", Content = "⚡10x × 3 потока!",
-                Duration = 4, Image = 4483362458
-            }) end)
+            table.insert(AntiAllHacksConnections,
+                RunService.RenderStepped:Connect(forceTP))
+            table.insert(AntiAllHacksConnections,
+                RunService.Heartbeat:Connect(forceTP))
+            table.insert(AntiAllHacksConnections,
+                RunService.Stepped:Connect(function() forceTP() end))
         else
-            for _, c in pairs(AntiAllHacksConnections) do pcall(function() c:Disconnect() end) end
+            for _, c in pairs(AntiAllHacksConnections) do
+                pcall(function() c:Disconnect() end)
+            end
             AntiAllHacksConnections = {}
         end
     end,
 })
 
--- ╔═══════════════════════════════════════╗
--- ║   💛 LOOP RESET                       ║
--- ╚═══════════════════════════════════════╝
+-- ═══════ LOOP RESET ═══════
 Tab:CreateSection("💛 Loop Reset ⚡")
 
 Tab:CreateToggle({
-    Name = "🔄 Loop Reset ⚡ULTRA FAST",
+    Name = "🔄 Loop Reset",
     CurrentValue = false, Flag = "LoopReset",
-    Callback = function(Value)
-        LoopResetEnabled = Value
-        if Value then
-            task.spawn(function()
-                while LoopResetEnabled do
-                    pcall(function()
-                        local hum = getHum()
-                        if hum and hum.Health > 0 then hum.Health = 0 end
-                    end)
-                    if LoopResetEnabled then
-                        local w = 0
-                        repeat task.wait(0.05); w = w + 0.05
-                        until (getHum() and getHum().Health > 0) or w > 10 or not LoopResetEnabled
-                        task.wait(0.05)
-                    end
-                end
-            end)
-        end
+    Callback = function(V)
+        LoopResetEnabled = V
+        if V then task.spawn(function()
+            while LoopResetEnabled do
+                pcall(function()
+                    local hum = getHum()
+                    if hum and hum.Health > 0 then hum.Health = 0 end
+                end)
+                local w = 0
+                repeat task.wait(0.05); w = w + 0.05
+                until (getHum() and getHum().Health > 0) or w > 10 or not LoopResetEnabled
+                task.wait(0.05)
+            end
+        end) end
     end,
 })
 
--- ╔═══════════════════════════════════════════════════════════════╗
--- ║   👑 PRO VERSION ANTI ALL v2 — ULTRA IMMOVABLE              ║
--- ║                                                               ║
--- ║   🆕 НОВОЕ:                                                   ║
--- ║   🔒 Реалтайм блокер ВСЕХ grab-анимаций                      ║
--- ║   🔄 Цикл анимаций каждые 0.3с (ломает граб Blobman)        ║
--- ║   🪑 Быстрый Sit→Jump цикл (ломает захват сидения)          ║
--- ║   🔧 Принудительный HumanoidState (блок состояния граба)     ║
--- ║   👻 Сетевой CFrame спуф (для других видно что ты на месте) ║
--- ║   💀 Уничтожение ВНЕШНИХ связей из Workspace                 ║
--- ║   🛡️ Блок Fire/Smoke/Sparkles/Trail эффектов                ║
--- ║                                                               ║
--- ║   + ВСЁ СТАРОЕ:                                               ║
--- ║   1000x TP | Anchor Lock | Force Kill | Weld Break           ║
--- ║   Seat Eject | Anti-Ragdoll | God Mode | Massless            ║
--- ╚═══════════════════════════════════════════════════════════════╝
-Tab:CreateSection("👑 Pro Anti All v2 — ULTRA")
+-- ╔═══════════════════════════════════════════════════════════════════╗
+-- ║                                                                   ║
+-- ║   👑 PRO ANTI ALL v3 — ИСПРАВЛЕН! РЕАЛЬНО РАБОТАЕТ!             ║
+-- ║                                                                   ║
+-- ║   ❌ УБРАНО: Anchored = true (ЛОМАЛ РЕПЛИКАЦИЮ!)                 ║
+-- ║   ✅ ВМЕСТО НЕГО: BodyPosition + BodyGyro с бесконечной силой    ║
+-- ║                                                                   ║
+-- ║   🔴 ПОЧЕМУ РАНЬШЕ НЕ РАБОТАЛО:                                  ║
+-- ║   Anchored = true → сервер НЕ получает позицию →                 ║
+-- ║   другие видят тебя ТАМ ГДЕ СХВАТИЛИ                            ║
+-- ║                                                                   ║
+-- ║   🟢 КАК РАБОТАЕТ ТЕПЕРЬ:                                        ║
+-- ║   BodyPosition (бесконечная сила) ДЕРЖИТ на координатах          ║
+-- ║   CFrame РЕПЛИЦИРУЕТСЯ на сервер → другие ВИДЯТ тебя на месте   ║
+-- ║   Все чужие силы УДАЛЯЮТСЯ, свои СОХРАНЯЮТСЯ                    ║
+-- ║                                                                   ║
+-- ║   + Реалтайм блокер анимаций (AnimationPlayed)                   ║
+-- ║   + Цикл стопа анимаций каждые 0.15с                            ║
+-- ║   + Sit/Jump цикл ломает граб Blobman                           ║
+-- ║   + HumanoidState форсинг (GettingUp)                           ║
+-- ║   + Разрыв ВСЕХ внешних Weld (включая из Workspace)             ║
+-- ║   + God Mode + Anti-Ragdoll + Anti-Effects                       ║
+-- ║                                                                   ║
+-- ╚═══════════════════════════════════════════════════════════════════╝
+
+Tab:CreateSection("👑 Pro Anti All v3 — FIXED")
 
 Tab:CreateParagraph({
-    Title = "👑 Pro Anti All v2 — ЧТО НОВОГО",
-    Content = "🔒 Реалтайм блокер ВСЕХ grab-анимаций\n"
-        .. "🔄 Цикл анимаций 0.3с (ломает Blobman граб)\n"
-        .. "🪑 Быстрый Sit→Jump (ломает захват сидения)\n"
-        .. "🔧 Принудительный HumanoidState\n"
-        .. "👻 Для других видно что ты НА МЕСТЕ\n"
-        .. "💀 Уничтожение связей из Workspace\n"
-        .. "🛡️ Блок эффектов Fire/Smoke/Trail\n"
+    Title = "👑 v3 — ЧТО ИСПРАВЛЕНО",
+    Content = "❌ УБРАН Anchored (ломал репликацию!)\n"
+        .. "✅ BodyPosition + BodyGyro (бесконечная сила)\n"
+        .. "✅ CFrame РЕПЛИЦИРУЕТСЯ → другие ВИДЯТ\n"
+        .. "✅ Анимации РЕАЛЬНО блокируются\n"
+        .. "✅ Sit/Jump цикл ломает Blobman\n"
+        .. "✅ Внешние Weld из Workspace удаляются\n"
         .. "━━━━━━━━━━━━━━━━━━━\n"
-        .. "1000x TP × 3 потока | Anchor Lock\n"
-        .. "God Mode | Massless | Anti-Ragdoll\n"
-        .. "X:322.31 Y:9.52 Z:489.68"
+        .. "Координаты: X:322.31 Y:9.52 Z:489.68"
 })
 
+-- Переменные для Pro Anim Blocker
+local ProAnimBlockerConn = nil
+local ProLastCharSetup   = nil
+
+-- ════════════════════════════════════════
+-- Установить AnimBlocker на персонажа
+-- ════════════════════════════════════════
+local function SetupProAnimBlocker(char)
+    if not char then return end
+    if ProAnimBlockerConn then
+        pcall(function() ProAnimBlockerConn:Disconnect() end)
+        ProAnimBlockerConn = nil
+    end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then hum = char:WaitForChild("Humanoid", 5) end
+    if not hum then return end
+
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then animator = hum:WaitForChild("Animator", 3) end
+    if not animator then return end
+
+    ProAnimBlockerConn = animator.AnimationPlayed:Connect(function(track)
+        if not ProAntiAllEnabled then return end
+
+        local animName = ""
+        pcall(function()
+            animName = track.Animation and track.Animation.Name or ""
+        end)
+
+        local safe = isAnimSafe(animName)
+        local grab = isAnimGrab(animName)
+
+        local suspiciousPriority = (
+            track.Priority == Enum.AnimationPriority.Action
+            or track.Priority == Enum.AnimationPriority.Action2
+            or track.Priority == Enum.AnimationPriority.Action3
+            or track.Priority == Enum.AnimationPriority.Action4
+        )
+
+        -- 🔴 Убиваем: если граб, или подозрительная + не безопасная,
+        -- или вообще пустое имя (часто грабы без имени)
+        if grab or (suspiciousPriority and not safe) or (not safe and animName == "") then
+            -- Стоп мгновенно
+            pcall(function() track:Stop(0) end)
+            -- Стоп через кадры (на случай если переиграют)
+            task.defer(function() pcall(function() track:Stop(0) end) end)
+            task.delay(0.05, function() pcall(function() track:Stop(0) end) end)
+            task.delay(0.1, function() pcall(function() track:Stop(0) end) end)
+            task.delay(0.15, function() pcall(function() track:Stop(0) end) end)
+
+            -- Принудительный ТП обратно
+            pcall(function()
+                local hrp = getHRP()
+                if hrp then
+                    -- ❌ НЕ ANCHOR! Просто CFrame + обнуление
+                    hrp.CFrame = SAFE_POSITION
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end
+            end)
+        end
+    end)
+
+    print("🔒 Pro AnimBlocker подключён к: " .. char.Name)
+end
+
+-- ════════════════════════════════════════
+-- Разрыв ВСЕХ внешних связей (включая
+-- Weld из Workspace которые ведут к нам)
+-- ════════════════════════════════════════
+local function DestroyExternalConnections(char)
+    if not char then return end
+
+    -- 1. Внутри персонажа: связи с внешними объектами
+    for _, v in pairs(char:GetDescendants()) do
+        if isConstraintType(v) then
+            local p0, p1 = nil, nil
+            pcall(function() p0 = v.Part0 end)
+            pcall(function() p1 = v.Part1 end)
+            if p0 and p1 then
+                if not p0:IsDescendantOf(char)
+                or not p1:IsDescendantOf(char) then
+                    pcall(function() v:Destroy() end)
+                end
+            end
+            -- Также Attachment0/Attachment1
+            local a0, a1 = nil, nil
+            pcall(function() a0 = v.Attachment0 end)
+            pcall(function() a1 = v.Attachment1 end)
+            if a0 and a1 then
+                local a0p = a0.Parent
+                local a1p = a1.Parent
+                if a0p and a1p then
+                    if not a0p:IsDescendantOf(char)
+                    or not a1p:IsDescendantOf(char) then
+                        pcall(function() v:Destroy() end)
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. В Workspace: связи ДРУГИХ объектов которые ведут к НАМ
+    pcall(function()
+        for _, v in pairs(Workspace:GetDescendants()) do
+            if v:IsDescendantOf(char) then continue end
+            if v:IsA("Weld") or v:IsA("WeldConstraint")
+            or v:IsA("RigidConstraint") then
+                local p0, p1 = nil, nil
+                pcall(function() p0 = v.Part0 end)
+                pcall(function() p1 = v.Part1 end)
+                if (p0 and p0:IsDescendantOf(char))
+                or (p1 and p1:IsDescendantOf(char)) then
+                    pcall(function() v:Destroy() end)
+                end
+            end
+        end
+    end)
+end
+
+-- ════════════════════════════════════════
+-- Удалить ВСЕ чужие силы (сохранить наши)
+-- ════════════════════════════════════════
+local function DestroyForeignForces(char)
+    if not char then return end
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            for _, child in pairs(part:GetChildren()) do
+                if isForceType(child) and not isOurObject(child) then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+end
+
+-- ════════════════════════════════════════
+-- Создать/проверить наш BodyPosition
+-- ════════════════════════════════════════
+local function EnsureBodyPosition(hrp)
+    local bp = hrp:FindFirstChild(OUR_BP_NAME)
+    if not bp then
+        bp = Instance.new("BodyPosition")
+        bp.Name = OUR_BP_NAME
+        bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bp.P = 1e7
+        bp.D = 1e5
+        bp.Parent = hrp
+    end
+    bp.Position = SAFE_POSITION.Position
+    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    return bp
+end
+
+-- ════════════════════════════════════════
+-- Создать/проверить наш BodyGyro
+-- ════════════════════════════════════════
+local function EnsureBodyGyro(hrp)
+    local bg = hrp:FindFirstChild(OUR_BG_NAME)
+    if not bg then
+        bg = Instance.new("BodyGyro")
+        bg.Name = OUR_BG_NAME
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.P = 1e7
+        bg.Parent = hrp
+    end
+    bg.CFrame = SAFE_POSITION
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    return bg
+end
+
 Tab:CreateToggle({
-    Name = "👑 Pro Anti All v2 ⚡IMMOVABLE",
+    Name = "👑 Pro Anti All v3 ⚡FIXED",
     CurrentValue = false, Flag = "ProAntiAll",
     Callback = function(Value)
         ProAntiAllEnabled = Value
 
         if Value then
-            -- ═══ Отключаем старые коннекты ═══
+            -- Отключаем старые коннекты
             for _, conn in pairs(ProAntiAllConnections) do
                 pcall(function() conn:Disconnect() end)
             end
             ProAntiAllConnections = {}
-            if ProAnimBlockerConnection then
-                pcall(function() ProAnimBlockerConnection:Disconnect() end)
-                ProAnimBlockerConnection = nil
-            end
 
             -- ══════════════════════════════════════════
-            -- 🔒 ПОТОК 1: Реалтайм блокер анимаций
-            -- Подключается к AnimationPlayed и убивает
-            -- grab-анимации В МОМЕНТ ЗАПУСКА
+            -- 🔒 ПОТОК 1: Реалтайм AnimBlocker
             -- ══════════════════════════════════════════
             pcall(function()
                 local char = getChar()
-                if char then SetupProAnimBlocker(char) end
+                if char then
+                    SetupProAnimBlocker(char)
+                    ProLastCharSetup = char
+                end
             end)
 
             -- Авто-переподключение при респавне
-            local charAddedConn
-            charAddedConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
-                if not ProAntiAllEnabled then
-                    pcall(function() charAddedConn:Disconnect() end)
-                    return
-                end
+            local charConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+                if not ProAntiAllEnabled then return end
                 task.wait(0.3)
                 SetupProAnimBlocker(newChar)
                 ProLastCharSetup = newChar
             end)
-            table.insert(ProAntiAllConnections, charAddedConn)
+            table.insert(ProAntiAllConnections, charConn)
 
             -- ══════════════════════════════════════════════
-            -- 🔄 ПОТОК 2: Цикл анимаций каждые 0.3 сек
-            -- Останавливает ВСЕ подозрительные анимации
-            -- + Принудительный HumanoidState
-            -- + Sit/Jump цикл для ломки граба
+            -- 🔄 ПОТОК 2: Цикл стопа анимаций + State +
+            --    Sit/Jump + проверка AnimBlocker (0.15 сек)
             -- ══════════════════════════════════════════════
-            ProAnimCycleThread = task.spawn(function()
+            local animCycleThread = task.spawn(function()
                 while ProAntiAllEnabled do
-                    task.wait(0.3)
+                    task.wait(0.15)
                     pcall(function()
-                        local hum = getHum()
-                        local hrp = getHRP()
+                        local hum  = getHum()
+                        local hrp  = getHRP()
                         local char = getChar()
                         if not hum or not hrp or not char then return end
 
                         -- 🔧 Принудительный HumanoidState
-                        -- Сбрасываем граб-состояния
                         pcall(function()
                             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                        end)
-                        task.wait(0.02)
-                        pcall(function()
-                            hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
                         end)
 
                         -- 🔄 Стоп ВСЕХ подозрительных анимаций
@@ -967,30 +920,19 @@ Tab:CreateToggle({
                                 pcall(function()
                                     an = track.Animation and track.Animation.Name or ""
                                 end)
+                                -- Стопаем ВСЁ кроме безопасных
                                 if not isAnimSafe(an) then
-                                    track:Stop(0)
+                                    pcall(function() track:Stop(0) end)
                                 end
                             end
                         end
 
-                        -- 🪑 Sit → Jump цикл (ломает граб Blobman)
-                        -- Кратковременно снимаем anchor для jump
-                        pcall(function()
-                            hrp.Anchored = false
-                            hum.Sit = false
-                            hum.PlatformStand = false
-                            hum.Jump = true
-                        end)
-                        task.wait(0.02)
-                        -- Сразу обратно anchor + TP
-                        pcall(function()
-                            hrp.CFrame = SAFE_POSITION
-                            hrp.Anchored = true
-                            hrp.AssemblyLinearVelocity = Vector3.zero
-                            hrp.AssemblyAngularVelocity = Vector3.zero
-                        end)
+                        -- 🪑 Anti-Sit + Jump (ломает граб Blobman)
+                        hum.Sit = false
+                        hum.PlatformStand = false
+                        hum.Jump = true
 
-                        -- 🔒 Проверяем и переподключаем AnimBlocker
+                        -- Проверяем AnimBlocker
                         if char ~= ProLastCharSetup then
                             ProLastCharSetup = char
                             SetupProAnimBlocker(char)
@@ -999,64 +941,32 @@ Tab:CreateToggle({
                 end
             end)
 
-            -- ══════════════════════════════════════════════════
-            -- 👻 ПОТОК 3: Сетевой спуф + доп. защита (0.5 сек)
-            -- Уничтожает ВНЕШНИЕ связи из Workspace
-            -- Другие видят тебя на SAFE_POSITION
-            -- ══════════════════════════════════════════════════
-            ProNetworkSpoofThread = task.spawn(function()
+            -- ══════════════════════════════════════════════
+            -- 💀 ПОТОК 3: Внешние связи из Workspace (0.3с)
+            -- ══════════════════════════════════════════════
+            local externalBreakThread = task.spawn(function()
                 while ProAntiAllEnabled do
-                    task.wait(0.5)
+                    task.wait(0.3)
                     pcall(function()
                         local char = getChar()
-                        local hrp = getHRP()
-                        local hum = getHum()
-                        if not char or not hrp then return end
-
-                        -- 💀 Уничтожаем ВНЕШНИЕ связи из Workspace
-                        -- (связи которые ДРУГИЕ игроки создали к нам)
-                        DestroyAllExternalConnections(char)
-
-                        -- 👻 Для сети: Кратко unanchor → set CFrame → anchor
-                        -- Это заставляет сервер обновить позицию
-                        hrp.Anchored = false
-                        hrp.CFrame = SAFE_POSITION
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                        hrp.AssemblyAngularVelocity = Vector3.zero
-                        task.wait(0.02)
-                        hrp.CFrame = SAFE_POSITION
-                        hrp.Anchored = true
-
-                        -- Выход из ЛЮБОГО сидения
-                        if hum then
-                            if hum.SeatPart then
-                                hum.Jump = true
-                                hum.Sit = false
-                                -- Ломаем SeatWeld напрямую
-                                pcall(function()
-                                    if hum.SeatPart then
-                                        for _, w in pairs(hum.SeatPart:GetChildren()) do
-                                            if w:IsA("Weld") or w:IsA("WeldConstraint") then
-                                                local p0 = w.Part0
-                                                local p1 = w.Part1
-                                                if (p0 and p0:IsDescendantOf(char))
-                                                or (p1 and p1:IsDescendantOf(char)) then
-                                                    w:Destroy()
-                                                end
-                                            end
-                                        end
-                                    end
-                                end)
-                            end
+                        if char then
+                            DestroyExternalConnections(char)
                         end
                     end)
                 end
             end)
 
-            -- ════════════════════════════════════════════════════════
-            -- ⚡ ОСНОВНОЙ ПОТОК: ultraLock (RenderStepped + Heartbeat
-            --    + Stepped) — 1000x TP + полная защита КАЖДЫЙ КАДР
-            -- ════════════════════════════════════════════════════════
+            -- ═══════════════════════════════════════════════════
+            -- ⚡ ОСНОВНОЙ ПОТОК: ultraLock
+            -- 3 потока: RenderStepped + Heartbeat + Stepped
+            --
+            -- 🟢 КЛЮЧЕВОЕ ОТЛИЧИЕ ОТ v2:
+            -- ❌ НЕТ Anchored = true
+            -- ✅ BodyPosition + BodyGyro ДЕРЖАТ позицию
+            -- ✅ CFrame РЕПЛИЦИРУЕТСЯ на сервер
+            -- ✅ Другие ВИДЯТ тебя на SAFE_POSITION
+            -- ═══════════════════════════════════════════════════
+
             local function ultraLock()
                 if not ProAntiAllEnabled then return end
                 local hrp  = getHRP()
@@ -1065,67 +975,116 @@ Tab:CreateToggle({
                 if not hrp or not char then return end
 
                 pcall(function()
-                    -- ══ 1000x TP + Zero Velocity ══
-                    for _ = 1, 1000 do
+                    -- ══════════════════════════════════
+                    -- ❌ УБРАН ANCHORED!
+                    -- ✅ Гарантируем что НЕ заанкорен
+                    -- ══════════════════════════════════
+                    hrp.Anchored = false
+
+                    -- ══════════════════════════════════
+                    -- ✅ BodyPosition ДЕРЖИТ на месте
+                    -- (бесконечная сила, реплицируется)
+                    -- ══════════════════════════════════
+                    EnsureBodyPosition(hrp)
+                    EnsureBodyGyro(hrp)
+
+                    -- ══════════════════════════════════
+                    -- ✅ CFrame + обнуление скорости
+                    -- (10x для надёжности)
+                    -- ══════════════════════════════════
+                    for _ = 1, 10 do
                         hrp.CFrame = SAFE_POSITION
                         hrp.AssemblyLinearVelocity  = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
 
-                    -- ══ ANCHOR LOCK ══
-                    hrp.Anchored = true
-                    hrp.CFrame   = SAFE_POSITION
+                    -- ══════════════════════════════════
+                    -- 💀 Удаление ВСЕХ ЧУЖИХ сил
+                    -- (наши BodyPosition/BodyGyro
+                    --  СОХРАНЯЮТСЯ по имени)
+                    -- ══════════════════════════════════
+                    for _, child in pairs(hrp:GetChildren()) do
+                        if isForceType(child) and not isOurObject(child) then
+                            child:Destroy()
+                        end
+                    end
 
-                    -- ══ Удаление ВСЕХ сил с HRP ══
-                    DestroyAllForces(char)
-
-                    -- ══ Разрыв ВСЕХ внешних связей ══
-                    for _, v in pairs(char:GetDescendants()) do
-                        if (v:IsA("Weld") or v:IsA("WeldConstraint")
-                        or v:IsA("RigidConstraint")
-                        or v:IsA("BallSocketConstraint")
-                        or v:IsA("HingeConstraint")
-                        or v:IsA("RopeConstraint")
-                        or v:IsA("SpringConstraint")
-                        or v:IsA("RodConstraint"))
-                        and v.Part0 and v.Part1 then
-                            if not v.Part0:IsDescendantOf(char)
-                            or not v.Part1:IsDescendantOf(char) then
-                                v:Destroy()
+                    -- Удалить силы со ВСЕХ частей тела
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") and part ~= hrp then
+                            part.AssemblyLinearVelocity  = Vector3.zero
+                            part.AssemblyAngularVelocity = Vector3.zero
+                            for _, child in pairs(part:GetChildren()) do
+                                if isForceType(child) and not isOurObject(child) then
+                                    child:Destroy()
+                                end
                             end
                         end
                     end
 
-                    -- ══ Выход из чужих сидений ══
-                    if hum and hum.SeatPart
-                    and not hum.SeatPart:IsDescendantOf(char) then
-                        hum.Jump = true
-                        hum.Sit = false
+                    -- ══════════════════════════════════
+                    -- 🔗 Разрыв ВСЕХ внешних связей
+                    -- (внутри персонажа)
+                    -- ══════════════════════════════════
+                    for _, v in pairs(char:GetDescendants()) do
+                        if isConstraintType(v) then
+                            local p0, p1 = nil, nil
+                            pcall(function() p0 = v.Part0 end)
+                            pcall(function() p1 = v.Part1 end)
+                            if p0 and p1 then
+                                if not p0:IsDescendantOf(char)
+                                or not p1:IsDescendantOf(char) then
+                                    v:Destroy()
+                                end
+                            end
+                        end
                     end
 
-                    -- ══ Anti-Ragdoll + God Mode ══
+                    -- ══════════════════════════════════
+                    -- 🪑 Выход из ЛЮБЫХ чужих сидений
+                    -- ══════════════════════════════════
                     if hum then
+                        if hum.SeatPart then
+                            if not hum.SeatPart:IsDescendantOf(char) then
+                                hum.Jump = true
+                                hum.Sit = false
+                                -- Ломаем SeatWeld
+                                pcall(function()
+                                    for _, w in pairs(hum.SeatPart:GetChildren()) do
+                                        if w:IsA("Weld") or w:IsA("WeldConstraint") then
+                                            local wp0, wp1 = nil, nil
+                                            pcall(function() wp0 = w.Part0 end)
+                                            pcall(function() wp1 = w.Part1 end)
+                                            if (wp0 and wp0:IsDescendantOf(char))
+                                            or (wp1 and wp1:IsDescendantOf(char)) then
+                                                w:Destroy()
+                                            end
+                                        end
+                                    end
+                                end)
+                            end
+                        end
+
+                        -- Anti-Ragdoll + God Mode
                         hum.PlatformStand = false
+                        hum.Sit = false
                         hum.Health = hum.MaxHealth
                     end
 
-                    -- ══ Anti-Effects ══
+                    -- ══════════════════════════════════
+                    -- 🛡️ Anti-Effects
+                    -- ══════════════════════════════════
                     for _, v in pairs(char:GetDescendants()) do
                         if v:IsA("Fire") or v:IsA("Smoke")
-                        or v:IsA("Sparkles") or v:IsA("Trail")
-                        or v:IsA("ParticleEmitter") then
-                            -- Не удаляем стандартные Trail от аксессуаров
-                            if v:IsA("Trail") then
-                                if v.Parent and not v.Parent:IsA("Accessory") then
-                                    v:Destroy()
-                                end
-                            else
-                                v:Destroy()
-                            end
+                        or v:IsA("Sparkles") then
+                            v:Destroy()
                         end
                     end
 
-                    -- ══ Стоп ВСЕХ подозрительных анимаций (КАЖДЫЙ КАДР) ══
+                    -- ══════════════════════════════════
+                    -- 🔄 Стоп ВСЕХ подозрительных
+                    --    анимаций КАЖДЫЙ КАДР
+                    -- ══════════════════════════════════
                     if hum then
                         local animator = hum:FindFirstChildOfClass("Animator")
                         if animator then
@@ -1136,17 +1095,20 @@ Tab:CreateToggle({
                                         and track.Animation.Name or ""
                                 end)
                                 if not isAnimSafe(an) then
-                                    track:Stop(0)
+                                    pcall(function() track:Stop(0) end)
                                 end
                             end
                         end
                     end
 
-                    -- ══ ФИНАЛЬНЫЙ ЛОК ══
+                    -- ══════════════════════════════════
+                    -- ✅ ФИНАЛЬНЫЙ ЛОК
+                    -- (CFrame + обнуление, БЕЗ ANCHOR)
+                    -- ══════════════════════════════════
+                    hrp.CFrame = SAFE_POSITION
                     hrp.AssemblyLinearVelocity  = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.CFrame   = SAFE_POSITION
-                    hrp.Anchored = true
+                    hrp.Anchored = false -- НИКОГДА НЕ ANCHOR!
                 end)
             end
 
@@ -1156,16 +1118,19 @@ Tab:CreateToggle({
             table.insert(ProAntiAllConnections,
                 RunService.Heartbeat:Connect(ultraLock))
             table.insert(ProAntiAllConnections,
-                RunService.Stepped:Connect(function() ultraLock() end))
+                RunService.Stepped:Connect(function()
+                    ultraLock()
+                end))
 
             pcall(function()
                 Rayfield:Notify({
-                    Title = "👑 Pro Anti All v2",
-                    Content = "⚡ ULTRA IMMOVABLE!\n"
-                        .. "🔒 Реалтайм блокер анимаций\n"
-                        .. "🔄 Цикл 0.3с + Sit/Jump\n"
-                        .. "👻 Сетевой спуф позиции\n"
-                        .. "1000x TP × 3 потока!",
+                    Title = "👑 Pro Anti All v3 FIXED",
+                    Content = "✅ ТЕПЕРЬ РАБОТАЕТ!\n"
+                        .. "❌ Anchored УБРАН\n"
+                        .. "✅ BodyPosition/BodyGyro\n"
+                        .. "✅ Другие ВИДЯТ тебя!\n"
+                        .. "🔒 Анимации БЛОКИРУЮТСЯ\n"
+                        .. "🪑 Sit/Jump ломает граб",
                     Duration = 6, Image = 4483362458
                 })
             end)
@@ -1177,29 +1142,27 @@ Tab:CreateToggle({
             end
             ProAntiAllConnections = {}
 
-            if ProAnimBlockerConnection then
-                pcall(function() ProAnimBlockerConnection:Disconnect() end)
-                ProAnimBlockerConnection = nil
+            if ProAnimBlockerConn then
+                pcall(function() ProAnimBlockerConn:Disconnect() end)
+                ProAnimBlockerConn = nil
             end
 
-            -- Снимаем anchor и massless
+            -- Удаляем наши BodyPosition/BodyGyro
             pcall(function()
                 local hrp = getHRP()
-                if hrp then hrp.Anchored = false end
-                local char = getChar()
-                if char then
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.Massless = false
-                        end
-                    end
+                if hrp then
+                    hrp.Anchored = false
+                    local bp = hrp:FindFirstChild(OUR_BP_NAME)
+                    if bp then bp:Destroy() end
+                    local bg = hrp:FindFirstChild(OUR_BG_NAME)
+                    if bg then bg:Destroy() end
                 end
             end)
 
             pcall(function()
                 Rayfield:Notify({
-                    Title = "👑 Pro Anti All v2",
-                    Content = "Выключен. Anchor снят.\nВсе потоки остановлены.",
+                    Title = "👑 Pro Anti All v3",
+                    Content = "Выключен. Все потоки остановлены.",
                     Duration = 3, Image = 4483362458
                 })
             end)
@@ -1212,20 +1175,20 @@ Tab:CreateToggle({
 -- ═══════════════════════════════════════
 pcall(function()
     Rayfield:Notify({
-        Title = "💀 DMM HUB v2 — Delta",
+        Title = "💀 DMM HUB v3 FIXED",
         Content = "✅ ВСЁ ЗАГРУЖЕНО!\n"
-            .. "👑 Pro Anti All v2 — ULTRA\n"
-            .. "🎨 Dark-White Theme",
+            .. "👑 Pro Anti All v3 ИСПРАВЛЕН!\n"
+            .. "✅ Другие ВИДЯТ тебя на месте!",
         Duration = 5, Image = 0,
     })
 end)
 
 print("═══════════════════════════════════════")
-print("  ✅ DMM HUB v2 — Loaded!")
-print("  👑 Pro Anti All v2 — ULTRA IMMOVABLE")
-print("  🔒 Realtime Anim Blocker")
-print("  🔄 Anim Cycle 0.3s")
-print("  🪑 Sit/Jump Grab Breaker")
-print("  👻 Network CFrame Spoof")
-print("  💀 External Weld Destroyer")
+print("  ✅ DMM HUB v3 — FIXED!")
+print("  👑 Pro Anti All v3:")
+print("  ❌ Anchored УБРАН")
+print("  ✅ BodyPosition/BodyGyro (реплицируется)")
+print("  ✅ Другие ВИДЯТ тебя на координатах")
+print("  ✅ Анимации РЕАЛЬНО блокируются")
+print("  ✅ Sit/Jump ломает Blobman граб")
 print("═══════════════════════════════════════")
