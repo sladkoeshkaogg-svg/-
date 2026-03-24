@@ -1,6 +1,7 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         DMM HUB — Pro Anti All v3 (FIXED)               ║
+-- ║         DMM HUB — Pro Anti All v3 (FIXED+INVIS)         ║
 -- ║  👑 РЕАЛЬНО РАБОТАЕТ — другие ВИДЯТ тебя на месте       ║
+-- ║  👻 НЕВИДИМ ДЛЯ ТЕБЯ — другие видят нормально          ║
 -- ║  ❌ Убран Anchored (ломал репликацию)                    ║
 -- ║  ✅ BodyPosition/BodyGyro с бесконечной силой            ║
 -- ║  ✅ Анимации реально блокируются                         ║
@@ -78,7 +79,11 @@ local FlySpeed             = 50
 local SAFE_POSITION        = CFrame.new(322.31, 9.52, 489.68)
 local _alive               = true
 
--- Имена наших объектов (чтобы не удалять свои)
+-- ═══════ ЛОКАЛЬНАЯ НЕВИДИМОСТЬ ═══════
+local LocalInvisEnabled    = false
+local LocalInvisConnection = nil
+local LocalInvisCharConn   = nil
+
 local OUR_BP_NAME = "_DMM_PRO_BP"
 local OUR_BG_NAME = "_DMM_PRO_BG"
 local OUR_FLY_BV  = "_DMM_FlyBV"
@@ -137,14 +142,12 @@ local function isAnimGrab(name)
     return false
 end
 
--- ═══════ Проверка: наш ли это объект? ═══════
 local function isOurObject(obj)
     local n = obj.Name
     return n == OUR_BP_NAME or n == OUR_BG_NAME
         or n == OUR_FLY_BV or n == OUR_FLY_BG
 end
 
--- ═══════ Типы сил для удаления ═══════
 local FORCE_TYPES = {
     "BodyVelocity", "BodyForce", "BodyThrust",
     "BodyAngularVelocity", "BodyPosition", "BodyGyro",
@@ -159,7 +162,6 @@ local function isForceType(obj)
     return false
 end
 
--- ═══════ Типы связей ═══════
 local CONSTRAINT_TYPES = {
     "Weld", "WeldConstraint", "RigidConstraint",
     "BallSocketConstraint", "HingeConstraint",
@@ -173,6 +175,126 @@ local function isConstraintType(obj)
         if obj:IsA(ct) then return true end
     end
     return false
+end
+
+-- ═══════════════════════════════════════════════════════
+-- 👻 СИСТЕМА ЛОКАЛЬНОЙ НЕВИДИМОСТИ
+-- LocalTransparencyModifier — ТОЛЬКО клиент видит
+-- Сервер НЕ знает → другие игроки видят тебя НОРМАЛЬНО
+-- Нулевая нагрузка — одно свойство на часть
+-- ═══════════════════════════════════════════════════════
+
+local function ApplyLocalInvisibility(char)
+    if not char then return end
+    for _, desc in pairs(char:GetDescendants()) do
+        pcall(function()
+            if desc:IsA("BasePart") then
+                desc.LocalTransparencyModifier = 1
+            elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                -- Лица и текстуры — прячем локально
+                desc.Transparency = 1
+            elseif desc:IsA("ParticleEmitter")
+                or desc:IsA("BillboardGui")
+                or desc:IsA("SurfaceGui") then
+                desc.Enabled = false
+            end
+        end)
+    end
+end
+
+local function RemoveLocalInvisibility(char)
+    if not char then return end
+    for _, desc in pairs(char:GetDescendants()) do
+        pcall(function()
+            if desc:IsA("BasePart") then
+                desc.LocalTransparencyModifier = 0
+            elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                desc.Transparency = 0
+            elseif desc:IsA("ParticleEmitter")
+                or desc:IsA("BillboardGui")
+                or desc:IsA("SurfaceGui") then
+                desc.Enabled = true
+            end
+        end)
+    end
+end
+
+local function StartLocalInvisLoop()
+    -- Убираем старое соединение
+    if LocalInvisConnection then
+        pcall(function() LocalInvisConnection:Disconnect() end)
+        LocalInvisConnection = nil
+    end
+    if LocalInvisCharConn then
+        pcall(function() LocalInvisCharConn:Disconnect() end)
+        LocalInvisCharConn = nil
+    end
+
+    -- Каждый кадр форсим невидимость (чтобы Roblox не сбрасывал)
+    LocalInvisConnection = RunService.RenderStepped:Connect(function()
+        if not LocalInvisEnabled then return end
+        local char = getChar()
+        if not char then return end
+        for _, desc in pairs(char:GetDescendants()) do
+            pcall(function()
+                if desc:IsA("BasePart") then
+                    desc.LocalTransparencyModifier = 1
+                end
+            end)
+        end
+    end)
+
+    -- При респавне — сразу применяем
+    LocalInvisCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+        if not LocalInvisEnabled then return end
+        task.wait(0.5)
+        ApplyLocalInvisibility(newChar)
+        -- Когда добавляется новый потомок (аксессуар и т.д.)
+        newChar.DescendantAdded:Connect(function(desc)
+            if not LocalInvisEnabled then return end
+            task.wait()
+            pcall(function()
+                if desc:IsA("BasePart") then
+                    desc.LocalTransparencyModifier = 1
+                elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                    desc.Transparency = 1
+                end
+            end)
+        end)
+    end)
+
+    -- Применяем сейчас
+    ApplyLocalInvisibility(getChar())
+
+    -- Подписка на новые потомки текущего персонажа
+    pcall(function()
+        local char = getChar()
+        if char then
+            char.DescendantAdded:Connect(function(desc)
+                if not LocalInvisEnabled then return end
+                task.wait()
+                pcall(function()
+                    if desc:IsA("BasePart") then
+                        desc.LocalTransparencyModifier = 1
+                    elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                        desc.Transparency = 1
+                    end
+                end)
+            end)
+        end
+    end)
+end
+
+local function StopLocalInvisLoop()
+    if LocalInvisConnection then
+        pcall(function() LocalInvisConnection:Disconnect() end)
+        LocalInvisConnection = nil
+    end
+    if LocalInvisCharConn then
+        pcall(function() LocalInvisCharConn:Disconnect() end)
+        LocalInvisCharConn = nil
+    end
+    RemoveLocalInvisibility(getChar())
 end
 
 -- ═══════ ЗАПИСЬ ИСТОРИИ ПОЗИЦИЙ ═══════
@@ -390,9 +512,7 @@ RunService.Heartbeat:Connect(function()
     end)
 end)
 
--- ═══════════════════════════════════════
--- 🎨 ТЁМНО-БЕЛАЯ ТЕМА
--- ═══════════════════════════════════════
+-- ═══════ ТЁМНО-БЕЛАЯ ТЕМА ═══════
 local DarkWhiteTheme = {
     TextColor = Color3.fromRGB(240, 240, 240),
     Background = Color3.fromRGB(18, 18, 22),
@@ -425,25 +545,60 @@ local DarkWhiteTheme = {
     PlaceholderColor = Color3.fromRGB(120, 120, 130),
 }
 
--- ═══════════════════════════════════════
--- ОКНО RAYFIELD
--- ═══════════════════════════════════════
+-- ═══════ ОКНО RAYFIELD ═══════
 local Window = Rayfield:CreateWindow({
-    Name = "💀 DMM HUB — v3 FIXED",
+    Name = "💀 DMM HUB — v3 FIXED+INVIS",
     Icon = 0,
     LoadingTitle = "💀 DMM HUB v3",
-    LoadingSubtitle = "FIXED — Теперь другие видят!",
+    LoadingSubtitle = "FIXED+INVIS — Невидим для себя!",
     Theme = DarkWhiteTheme,
     DisableRayfieldPrompts = true,
     DisableBuildWarnings = true,
     ConfigurationSaving = {
         Enabled = true, FolderName = "DMM_HUB",
-        FileName = "v3_Config"
+        FileName = "v3_Invis_Config"
     },
     KeySystem = false,
 })
 
 local Tab = Window:CreateTab("⭐ Features", 4483362458)
+
+-- ═══════════════════════════════════════
+-- 👻 ЛОКАЛЬНАЯ НЕВИДИМОСТЬ (ПЕРВАЯ СЕКЦИЯ)
+-- ═══════════════════════════════════════
+Tab:CreateSection("👻 Невидимость (только для тебя)")
+
+Tab:CreateParagraph({
+    Title = "👻 Как работает",
+    Content = "✅ ТЫ не видишь себя\n"
+        .. "✅ ДРУГИЕ видят тебя НОРМАЛЬНО\n"
+        .. "✅ Скорость/FPS без изменений\n"
+        .. "✅ LocalTransparencyModifier = клиент\n"
+        .. "✅ Сервер НЕ знает → 0% бана"
+})
+
+Tab:CreateToggle({
+    Name = "👻 Невидим для себя (другие видят)",
+    CurrentValue = false, Flag = "LocalInvis",
+    Callback = function(V)
+        LocalInvisEnabled = V
+        if V then
+            StartLocalInvisLoop()
+            pcall(function() Rayfield:Notify({
+                Title = "👻 Невидимость",
+                Content = "ТЫ невидим для себя!\nДругие видят тебя нормально.",
+                Duration = 3, Image = 4483362458
+            }) end)
+        else
+            StopLocalInvisLoop()
+            pcall(function() Rayfield:Notify({
+                Title = "👻 Невидимость",
+                Content = "Выключена. Ты снова видишь себя.",
+                Duration = 2, Image = 4483362458
+            }) end)
+        end
+    end,
+})
 
 -- ═══════ FLY ═══════
 Tab:CreateSection("✈️ Летание (Fly)")
@@ -650,31 +805,7 @@ Tab:CreateToggle({
     end,
 })
 
--- ╔═══════════════════════════════════════════════════════════════════╗
--- ║                                                                   ║
--- ║   👑 PRO ANTI ALL v3 — ИСПРАВЛЕН! РЕАЛЬНО РАБОТАЕТ!             ║
--- ║                                                                   ║
--- ║   ❌ УБРАНО: Anchored = true (ЛОМАЛ РЕПЛИКАЦИЮ!)                 ║
--- ║   ✅ ВМЕСТО НЕГО: BodyPosition + BodyGyro с бесконечной силой    ║
--- ║                                                                   ║
--- ║   🔴 ПОЧЕМУ РАНЬШЕ НЕ РАБОТАЛО:                                  ║
--- ║   Anchored = true → сервер НЕ получает позицию →                 ║
--- ║   другие видят тебя ТАМ ГДЕ СХВАТИЛИ                            ║
--- ║                                                                   ║
--- ║   🟢 КАК РАБОТАЕТ ТЕПЕРЬ:                                        ║
--- ║   BodyPosition (бесконечная сила) ДЕРЖИТ на координатах          ║
--- ║   CFrame РЕПЛИЦИРУЕТСЯ на сервер → другие ВИДЯТ тебя на месте   ║
--- ║   Все чужие силы УДАЛЯЮТСЯ, свои СОХРАНЯЮТСЯ                    ║
--- ║                                                                   ║
--- ║   + Реалтайм блокер анимаций (AnimationPlayed)                   ║
--- ║   + Цикл стопа анимаций каждые 0.15с                            ║
--- ║   + Sit/Jump цикл ломает граб Blobman                           ║
--- ║   + HumanoidState форсинг (GettingUp)                           ║
--- ║   + Разрыв ВСЕХ внешних Weld (включая из Workspace)             ║
--- ║   + God Mode + Anti-Ragdoll + Anti-Effects                       ║
--- ║                                                                   ║
--- ╚═══════════════════════════════════════════════════════════════════╝
-
+-- ═══════ PRO ANTI ALL v3 ═══════
 Tab:CreateSection("👑 Pro Anti All v3 — FIXED")
 
 Tab:CreateParagraph({
@@ -689,62 +820,44 @@ Tab:CreateParagraph({
         .. "Координаты: X:322.31 Y:9.52 Z:489.68"
 })
 
--- Переменные для Pro Anim Blocker
 local ProAnimBlockerConn = nil
 local ProLastCharSetup   = nil
 
--- ════════════════════════════════════════
--- Установить AnimBlocker на персонажа
--- ════════════════════════════════════════
 local function SetupProAnimBlocker(char)
     if not char then return end
     if ProAnimBlockerConn then
         pcall(function() ProAnimBlockerConn:Disconnect() end)
         ProAnimBlockerConn = nil
     end
-
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then hum = char:WaitForChild("Humanoid", 5) end
     if not hum then return end
-
     local animator = hum:FindFirstChildOfClass("Animator")
     if not animator then animator = hum:WaitForChild("Animator", 3) end
     if not animator then return end
-
     ProAnimBlockerConn = animator.AnimationPlayed:Connect(function(track)
         if not ProAntiAllEnabled then return end
-
         local animName = ""
         pcall(function()
             animName = track.Animation and track.Animation.Name or ""
         end)
-
         local safe = isAnimSafe(animName)
         local grab = isAnimGrab(animName)
-
         local suspiciousPriority = (
             track.Priority == Enum.AnimationPriority.Action
             or track.Priority == Enum.AnimationPriority.Action2
             or track.Priority == Enum.AnimationPriority.Action3
             or track.Priority == Enum.AnimationPriority.Action4
         )
-
-        -- 🔴 Убиваем: если граб, или подозрительная + не безопасная,
-        -- или вообще пустое имя (часто грабы без имени)
         if grab or (suspiciousPriority and not safe) or (not safe and animName == "") then
-            -- Стоп мгновенно
             pcall(function() track:Stop(0) end)
-            -- Стоп через кадры (на случай если переиграют)
             task.defer(function() pcall(function() track:Stop(0) end) end)
             task.delay(0.05, function() pcall(function() track:Stop(0) end) end)
             task.delay(0.1, function() pcall(function() track:Stop(0) end) end)
             task.delay(0.15, function() pcall(function() track:Stop(0) end) end)
-
-            -- Принудительный ТП обратно
             pcall(function()
                 local hrp = getHRP()
                 if hrp then
-                    -- ❌ НЕ ANCHOR! Просто CFrame + обнуление
                     hrp.CFrame = SAFE_POSITION
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
@@ -752,18 +865,10 @@ local function SetupProAnimBlocker(char)
             end)
         end
     end)
-
-    print("🔒 Pro AnimBlocker подключён к: " .. char.Name)
 end
 
--- ════════════════════════════════════════
--- Разрыв ВСЕХ внешних связей (включая
--- Weld из Workspace которые ведут к нам)
--- ════════════════════════════════════════
 local function DestroyExternalConnections(char)
     if not char then return end
-
-    -- 1. Внутри персонажа: связи с внешними объектами
     for _, v in pairs(char:GetDescendants()) do
         if isConstraintType(v) then
             local p0, p1 = nil, nil
@@ -775,7 +880,6 @@ local function DestroyExternalConnections(char)
                     pcall(function() v:Destroy() end)
                 end
             end
-            -- Также Attachment0/Attachment1
             local a0, a1 = nil, nil
             pcall(function() a0 = v.Attachment0 end)
             pcall(function() a1 = v.Attachment1 end)
@@ -791,8 +895,6 @@ local function DestroyExternalConnections(char)
             end
         end
     end
-
-    -- 2. В Workspace: связи ДРУГИХ объектов которые ведут к НАМ
     pcall(function()
         for _, v in pairs(Workspace:GetDescendants()) do
             if v:IsDescendantOf(char) then continue end
@@ -810,9 +912,6 @@ local function DestroyExternalConnections(char)
     end)
 end
 
--- ════════════════════════════════════════
--- Удалить ВСЕ чужие силы (сохранить наши)
--- ════════════════════════════════════════
 local function DestroyForeignForces(char)
     if not char then return end
     for _, part in pairs(char:GetDescendants()) do
@@ -826,9 +925,6 @@ local function DestroyForeignForces(char)
     end
 end
 
--- ════════════════════════════════════════
--- Создать/проверить наш BodyPosition
--- ════════════════════════════════════════
 local function EnsureBodyPosition(hrp)
     local bp = hrp:FindFirstChild(OUR_BP_NAME)
     if not bp then
@@ -844,9 +940,6 @@ local function EnsureBodyPosition(hrp)
     return bp
 end
 
--- ════════════════════════════════════════
--- Создать/проверить наш BodyGyro
--- ════════════════════════════════════════
 local function EnsureBodyGyro(hrp)
     local bg = hrp:FindFirstChild(OUR_BG_NAME)
     if not bg then
@@ -866,17 +959,12 @@ Tab:CreateToggle({
     CurrentValue = false, Flag = "ProAntiAll",
     Callback = function(Value)
         ProAntiAllEnabled = Value
-
         if Value then
-            -- Отключаем старые коннекты
             for _, conn in pairs(ProAntiAllConnections) do
                 pcall(function() conn:Disconnect() end)
             end
             ProAntiAllConnections = {}
 
-            -- ══════════════════════════════════════════
-            -- 🔒 ПОТОК 1: Реалтайм AnimBlocker
-            -- ══════════════════════════════════════════
             pcall(function()
                 local char = getChar()
                 if char then
@@ -885,7 +973,6 @@ Tab:CreateToggle({
                 end
             end)
 
-            -- Авто-переподключение при респавне
             local charConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
                 if not ProAntiAllEnabled then return end
                 task.wait(0.3)
@@ -894,11 +981,7 @@ Tab:CreateToggle({
             end)
             table.insert(ProAntiAllConnections, charConn)
 
-            -- ══════════════════════════════════════════════
-            -- 🔄 ПОТОК 2: Цикл стопа анимаций + State +
-            --    Sit/Jump + проверка AnimBlocker (0.15 сек)
-            -- ══════════════════════════════════════════════
-            local animCycleThread = task.spawn(function()
+            task.spawn(function()
                 while ProAntiAllEnabled do
                     task.wait(0.15)
                     pcall(function()
@@ -906,13 +989,9 @@ Tab:CreateToggle({
                         local hrp  = getHRP()
                         local char = getChar()
                         if not hum or not hrp or not char then return end
-
-                        -- 🔧 Принудительный HumanoidState
                         pcall(function()
                             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                         end)
-
-                        -- 🔄 Стоп ВСЕХ подозрительных анимаций
                         local animator = hum:FindFirstChildOfClass("Animator")
                         if animator then
                             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
@@ -920,19 +999,14 @@ Tab:CreateToggle({
                                 pcall(function()
                                     an = track.Animation and track.Animation.Name or ""
                                 end)
-                                -- Стопаем ВСЁ кроме безопасных
                                 if not isAnimSafe(an) then
                                     pcall(function() track:Stop(0) end)
                                 end
                             end
                         end
-
-                        -- 🪑 Anti-Sit + Jump (ломает граб Blobman)
                         hum.Sit = false
                         hum.PlatformStand = false
                         hum.Jump = true
-
-                        -- Проверяем AnimBlocker
                         if char ~= ProLastCharSetup then
                             ProLastCharSetup = char
                             SetupProAnimBlocker(char)
@@ -941,10 +1015,7 @@ Tab:CreateToggle({
                 end
             end)
 
-            -- ══════════════════════════════════════════════
-            -- 💀 ПОТОК 3: Внешние связи из Workspace (0.3с)
-            -- ══════════════════════════════════════════════
-            local externalBreakThread = task.spawn(function()
+            task.spawn(function()
                 while ProAntiAllEnabled do
                     task.wait(0.3)
                     pcall(function()
@@ -956,60 +1027,26 @@ Tab:CreateToggle({
                 end
             end)
 
-            -- ═══════════════════════════════════════════════════
-            -- ⚡ ОСНОВНОЙ ПОТОК: ultraLock
-            -- 3 потока: RenderStepped + Heartbeat + Stepped
-            --
-            -- 🟢 КЛЮЧЕВОЕ ОТЛИЧИЕ ОТ v2:
-            -- ❌ НЕТ Anchored = true
-            -- ✅ BodyPosition + BodyGyro ДЕРЖАТ позицию
-            -- ✅ CFrame РЕПЛИЦИРУЕТСЯ на сервер
-            -- ✅ Другие ВИДЯТ тебя на SAFE_POSITION
-            -- ═══════════════════════════════════════════════════
-
             local function ultraLock()
                 if not ProAntiAllEnabled then return end
                 local hrp  = getHRP()
                 local hum  = getHum()
                 local char = getChar()
                 if not hrp or not char then return end
-
                 pcall(function()
-                    -- ══════════════════════════════════
-                    -- ❌ УБРАН ANCHORED!
-                    -- ✅ Гарантируем что НЕ заанкорен
-                    -- ══════════════════════════════════
                     hrp.Anchored = false
-
-                    -- ══════════════════════════════════
-                    -- ✅ BodyPosition ДЕРЖИТ на месте
-                    -- (бесконечная сила, реплицируется)
-                    -- ══════════════════════════════════
                     EnsureBodyPosition(hrp)
                     EnsureBodyGyro(hrp)
-
-                    -- ══════════════════════════════════
-                    -- ✅ CFrame + обнуление скорости
-                    -- (10x для надёжности)
-                    -- ══════════════════════════════════
                     for _ = 1, 10 do
                         hrp.CFrame = SAFE_POSITION
                         hrp.AssemblyLinearVelocity  = Vector3.zero
                         hrp.AssemblyAngularVelocity = Vector3.zero
                     end
-
-                    -- ══════════════════════════════════
-                    -- 💀 Удаление ВСЕХ ЧУЖИХ сил
-                    -- (наши BodyPosition/BodyGyro
-                    --  СОХРАНЯЮТСЯ по имени)
-                    -- ══════════════════════════════════
                     for _, child in pairs(hrp:GetChildren()) do
                         if isForceType(child) and not isOurObject(child) then
                             child:Destroy()
                         end
                     end
-
-                    -- Удалить силы со ВСЕХ частей тела
                     for _, part in pairs(char:GetDescendants()) do
                         if part:IsA("BasePart") and part ~= hrp then
                             part.AssemblyLinearVelocity  = Vector3.zero
@@ -1021,11 +1058,6 @@ Tab:CreateToggle({
                             end
                         end
                     end
-
-                    -- ══════════════════════════════════
-                    -- 🔗 Разрыв ВСЕХ внешних связей
-                    -- (внутри персонажа)
-                    -- ══════════════════════════════════
                     for _, v in pairs(char:GetDescendants()) do
                         if isConstraintType(v) then
                             local p0, p1 = nil, nil
@@ -1039,16 +1071,11 @@ Tab:CreateToggle({
                             end
                         end
                     end
-
-                    -- ══════════════════════════════════
-                    -- 🪑 Выход из ЛЮБЫХ чужих сидений
-                    -- ══════════════════════════════════
                     if hum then
                         if hum.SeatPart then
                             if not hum.SeatPart:IsDescendantOf(char) then
                                 hum.Jump = true
                                 hum.Sit = false
-                                -- Ломаем SeatWeld
                                 pcall(function()
                                     for _, w in pairs(hum.SeatPart:GetChildren()) do
                                         if w:IsA("Weld") or w:IsA("WeldConstraint") then
@@ -1064,27 +1091,16 @@ Tab:CreateToggle({
                                 end)
                             end
                         end
-
-                        -- Anti-Ragdoll + God Mode
                         hum.PlatformStand = false
                         hum.Sit = false
                         hum.Health = hum.MaxHealth
                     end
-
-                    -- ══════════════════════════════════
-                    -- 🛡️ Anti-Effects
-                    -- ══════════════════════════════════
                     for _, v in pairs(char:GetDescendants()) do
                         if v:IsA("Fire") or v:IsA("Smoke")
                         or v:IsA("Sparkles") then
                             v:Destroy()
                         end
                     end
-
-                    -- ══════════════════════════════════
-                    -- 🔄 Стоп ВСЕХ подозрительных
-                    --    анимаций КАЖДЫЙ КАДР
-                    -- ══════════════════════════════════
                     if hum then
                         local animator = hum:FindFirstChildOfClass("Animator")
                         if animator then
@@ -1100,54 +1116,37 @@ Tab:CreateToggle({
                             end
                         end
                     end
-
-                    -- ══════════════════════════════════
-                    -- ✅ ФИНАЛЬНЫЙ ЛОК
-                    -- (CFrame + обнуление, БЕЗ ANCHOR)
-                    -- ══════════════════════════════════
                     hrp.CFrame = SAFE_POSITION
                     hrp.AssemblyLinearVelocity  = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.Anchored = false -- НИКОГДА НЕ ANCHOR!
+                    hrp.Anchored = false
                 end)
             end
 
-            -- Подключаем к 3 потокам
             table.insert(ProAntiAllConnections,
                 RunService.RenderStepped:Connect(ultraLock))
             table.insert(ProAntiAllConnections,
                 RunService.Heartbeat:Connect(ultraLock))
             table.insert(ProAntiAllConnections,
-                RunService.Stepped:Connect(function()
-                    ultraLock()
-                end))
+                RunService.Stepped:Connect(function() ultraLock() end))
 
             pcall(function()
                 Rayfield:Notify({
                     Title = "👑 Pro Anti All v3 FIXED",
-                    Content = "✅ ТЕПЕРЬ РАБОТАЕТ!\n"
-                        .. "❌ Anchored УБРАН\n"
-                        .. "✅ BodyPosition/BodyGyro\n"
-                        .. "✅ Другие ВИДЯТ тебя!\n"
-                        .. "🔒 Анимации БЛОКИРУЮТСЯ\n"
-                        .. "🪑 Sit/Jump ломает граб",
-                    Duration = 6, Image = 4483362458
+                    Content = "✅ РАБОТАЕТ!\n✅ BodyPosition/BodyGyro\n✅ Другие ВИДЯТ тебя!",
+                    Duration = 5, Image = 4483362458
                 })
             end)
 
         else
-            -- ═══ ВЫКЛЮЧЕНИЕ ═══
             for _, conn in pairs(ProAntiAllConnections) do
                 pcall(function() conn:Disconnect() end)
             end
             ProAntiAllConnections = {}
-
             if ProAnimBlockerConn then
                 pcall(function() ProAnimBlockerConn:Disconnect() end)
                 ProAnimBlockerConn = nil
             end
-
-            -- Удаляем наши BodyPosition/BodyGyro
             pcall(function()
                 local hrp = getHRP()
                 if hrp then
@@ -1158,11 +1157,10 @@ Tab:CreateToggle({
                     if bg then bg:Destroy() end
                 end
             end)
-
             pcall(function()
                 Rayfield:Notify({
                     Title = "👑 Pro Anti All v3",
-                    Content = "Выключен. Все потоки остановлены.",
+                    Content = "Выключен.",
                     Duration = 3, Image = 4483362458
                 })
             end)
@@ -1170,25 +1168,17 @@ Tab:CreateToggle({
     end,
 })
 
--- ═══════════════════════════════════════
--- ✅ ЗАГРУЖЕНО
--- ═══════════════════════════════════════
+-- ═══════ ЗАГРУЖЕНО ═══════
 pcall(function()
     Rayfield:Notify({
-        Title = "💀 DMM HUB v3 FIXED",
-        Content = "✅ ВСЁ ЗАГРУЖЕНО!\n"
-            .. "👑 Pro Anti All v3 ИСПРАВЛЕН!\n"
-            .. "✅ Другие ВИДЯТ тебя на месте!",
+        Title = "💀 DMM HUB v3 FIXED+INVIS",
+        Content = "✅ ВСЁ ЗАГРУЖЕНО!\n👻 Невидимость для себя ДОБАВЛЕНА!\n👑 Pro Anti All v3 ИСПРАВЛЕН!",
         Duration = 5, Image = 0,
     })
 end)
 
 print("═══════════════════════════════════════")
-print("  ✅ DMM HUB v3 — FIXED!")
-print("  👑 Pro Anti All v3:")
-print("  ❌ Anchored УБРАН")
-print("  ✅ BodyPosition/BodyGyro (реплицируется)")
-print("  ✅ Другие ВИДЯТ тебя на координатах")
-print("  ✅ Анимации РЕАЛЬНО блокируются")
-print("  ✅ Sit/Jump ломает Blobman граб")
+print("  ✅ DMM HUB v3 — FIXED+INVIS!")
+print("  👻 Локальная невидимость добавлена")
+print("  👑 Pro Anti All v3 работает")
 print("═══════════════════════════════════════")
